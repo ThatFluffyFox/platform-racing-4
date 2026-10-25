@@ -17,7 +17,7 @@ static func run_tests(main_instance: Main):
 		tests_to_run = ["game"]
 
 	if "all" in tests_to_run:
-		tests_to_run = ["game", "editor", "tester", "items"] # "user_settings" is flaky, skip for now
+		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics"] # "user_settings" is flaky, skip for now
 
 	for test in tests_to_run:
 		match test:
@@ -33,6 +33,8 @@ static func run_tests(main_instance: Main):
 				await _run_user_settings_test(main_instance)
 			"items":
 				await _run_items_test(main_instance)
+			"pr2_physics":
+				await _run_pr2_physics_test(main_instance)
 
 	main_instance.get_tree().quit()
 	return true
@@ -73,6 +75,53 @@ static func _run_items_test(main_instance: Main):
 		await main_instance.get_tree().create_timer(0.5).timeout
 		character.item_manager.use(main_instance.get_process_delta_time())
 		await main_instance.get_tree().create_timer(0.5).timeout
+
+
+static func _run_pr2_physics_test(main_instance: Main):
+	# A 10x10 room: start block at (2, 5), floor on row 6, walls on both sides.
+	var data := []
+	data.resize(100)
+	data.fill(0)
+	for x in 10:
+		data[60 + x] = 1
+	for y in 7:
+		data[y * 10] = 1
+		data[y * 10 + 9] = 1
+	data[52] = 12
+	var level := {
+		"layers": [{"name": "Layer 1", "depth": 10, "rotation": 0, "chunks": [
+			{"x": 0, "y": 0, "width": 10, "height": 10, "data": data}]}],
+		"properties": {"game_config_overrides": {"pr2_physics": true}},
+	}
+
+	var tester = await main_instance._set_scene(Main.TESTER, {"level": level})
+	var character: Character = tester.get_node("PlayerManager").get_character()
+	if not character or not character.uses_pr2_physics():
+		print("PR2 physics test: level did not turn on PR2 physics.")
+		main_instance.get_tree().quit(1)
+		return
+
+	# Land, then run and jump around for a few seconds.
+	await main_instance.get_tree().create_timer(2.0).timeout
+	var start_position: Vector2 = character.position
+	var landed: bool = character.is_grounded()
+	for keys in [["right"], ["right", "jump"], ["left"], ["left", "jump"], ["down"], []]:
+		for action in keys:
+			Input.action_press(action)
+		await main_instance.get_tree().create_timer(0.5).timeout
+		for action in keys:
+			Input.action_release(action)
+	await main_instance.get_tree().create_timer(2.0).timeout
+
+	if not landed or not character.is_grounded():
+		print("PR2 physics test: character is not standing. Position: ", character.position)
+		main_instance.get_tree().quit(1)
+	elif character.position.distance_to(start_position) < 1.0:
+		print("PR2 physics test: character did not move.")
+		main_instance.get_tree().quit(1)
+	else:
+		print("PR2 physics test passed.")
+	GameConfig.clear_overrides()
 
 
 static func _run_editor_test(main_instance: Main):

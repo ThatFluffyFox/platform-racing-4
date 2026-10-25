@@ -38,6 +38,7 @@ var lightbreak: LightbreakController
 var movement: MovementController
 var animation: AnimationController
 var tile_interaction: TileInteractionController
+var pr2_physics: Pr2Physics
 var control_vector: Vector2
 
 
@@ -48,6 +49,7 @@ func _ready() -> void:
 	lightbreak = LightbreakController.new(light, sun_particles, moon_particles)
 	movement = MovementController.new(ice)
 	animation = AnimationController.new(display, sjaura)
+	pr2_physics = Pr2Physics.new(self)
 	
 
 func init(tiles_node: Tiles) -> void:
@@ -65,6 +67,13 @@ func _physics_process(delta: float) -> void:
 	hitbox.run(self)
 	low_area.scale = movement.size
 	high_area.scale = movement.size
+	
+	# PR2 physics mode, unless a lightbreak needs PR4 movement this tick
+	if uses_pr2_physics():
+		if not lightbreak.is_active():
+			_pr2_physics_process(delta)
+			return
+		pr2_physics.invalidate()
 	
 	# Process gravity
 	gravity.run(self, delta)
@@ -110,6 +119,39 @@ func _physics_process(delta: float) -> void:
 	
 	# Check boundaries
 	tile_interaction.check_out_of_bounds(self)
+
+
+func _pr2_physics_process(delta: float) -> void:
+	_process_item_forces(delta)
+	pr2_physics.physics_tick(delta)
+
+	# Gas tiles (lights, switches). PR2 physics handles water and safety nets.
+	_interact_with_gas_tiles()
+
+	control_vector = Input.get_vector("left", "right", "up", "down")
+	lightbreak.process(delta, control_vector, self)
+	_process_items(delta)
+	camera_controller.process(delta, position, lightbreak.is_active())
+	scale = movement.size
+	animation.process(self, movement, super_jump)
+
+
+func _interact_with_gas_tiles() -> void:
+	for tile in tile_interaction.get_tiles_overlapping_area(low_area):
+		if tile.block_id == Pr2Physics.B_WATER or tile.block_id == Pr2Physics.B_SAFETY:
+			continue
+		tiles.on("area", tile.block_id, self, tile.tile_map_layer, tile.coords)
+
+
+func uses_pr2_physics() -> bool:
+	return pr2_physics != null and Pr2Physics.is_enabled()
+
+
+## On the ground, for either physics mode.
+func is_grounded() -> bool:
+	if uses_pr2_physics() and not lightbreak.is_active():
+		return pr2_physics.grounded
+	return is_on_floor()
 
 
 func _process_item_forces(delta: float) -> void:

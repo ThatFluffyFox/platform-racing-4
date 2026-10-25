@@ -1,6 +1,10 @@
 extends Node
 
 var default_values: Dictionary = {
+	# Level physics
+	"pr2_physics": false, # use Platform Racing 2 player physics
+	"pr2_gravity": 1.0, # PR2 level gravity multiplier (only used with pr2_physics)
+
 	# Player Movement
 	"player_speed": 490.0,
 	"player_jump_velocity": -155.0,

@@ -32,14 +32,21 @@ func process(character: Character, movement: MovementController, super_jump: Sup
 	else:
 		display.set_speed_scale(1)
 	
+	var pr2_charging: bool = character.uses_pr2_physics() \
+			and character.pr2_physics.is_charging_super_jump()
+	var charging: bool = super_jump.is_locking() or pr2_charging
+	var charge: float = super_jump.charge_precentage()
+	if pr2_charging:
+		charge = character.pr2_physics.super_jump_charge()
+	
 	# On ground
-	if !movement.hurt and character.is_on_floor():
-		if super_jump.is_locking():
-			if super_jump.charge_precentage() < 1:
+	if !movement.hurt and character.is_grounded():
+		if charging:
+			if charge < 1:
 				display.play(CharacterDisplay.CHARGE)
 			else:
 				display.play(CharacterDisplay.CHARGE_HOLD)
-			display.animations.seek(super_jump.charge_precentage())
+			display.animations.seek(charge)
 		elif !movement.hurt and movement.is_crouching:
 			if control_vector.x != 0:
 				display.play(CharacterDisplay.CRAWL)
@@ -59,14 +66,14 @@ func process(character: Character, movement: MovementController, super_jump: Sup
 		display.play(CharacterDisplay.JUMP)
 	
 	# Super jump charge effect
-	shake = super_jump.charge_precentage() / 8
+	shake = charge / 8
 	sjanim = randf_range(1 - shake, 1 + shake)
-	if super_jump.is_locking():
+	if charging:
 		display.scale.y = sjanim
 		if !movement.frozen:
-			display.modulate.b = 1.0 - super_jump.charge_precentage()
-		sjaura.modulate.a = super_jump.charge_precentage() / 2
-		sjaura.scale.y = super_jump.charge_precentage() / 2
+			display.modulate.b = 1.0 - charge
+		sjaura.modulate.a = charge / 2
+		sjaura.scale.y = charge / 2
 		if !sjaura.visible:
 			sjaura.visible = true
 	else:

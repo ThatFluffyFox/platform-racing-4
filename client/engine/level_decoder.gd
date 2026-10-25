@@ -11,6 +11,11 @@ func decode(level: Dictionary, isEditing: bool, layers: Layers) -> void:
 	var properties = level.get("properties", {})
 	if properties.has("game_config_overrides"):
 		GameConfig.import_overrides(properties.game_config_overrides)
+	# Levels imported from PR2 carry PR2's gravity multiplier
+	var gravity = properties.get("gravity", 1.0)
+	var has_override := GameConfig.override_values.has("pr2_gravity")
+	if gravity is float and gravity != 1.0 and not has_override:
+		GameConfig.override_values["pr2_gravity"] = gravity
 
 	print("LevelDecoder::decode: ", properties)
 	# Emit background change event
