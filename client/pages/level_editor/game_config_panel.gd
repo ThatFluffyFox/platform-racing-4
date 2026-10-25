@@ -4,6 +4,8 @@ signal control_event
 
 @onready var grid_container = $MarginContainer/ScrollContainer/GridContainer
 
+const VALUE_WIDTH := 200.0
+
 var line_edit_nodes: Dictionary = {}
 var check_box_nodes: Dictionary = {}
 var label_overrides: Dictionary = {
@@ -18,9 +20,16 @@ func _ready():
 
 
 func populate_options():
+	for header in ["Setting", "Default", "Level value"]:
+		var header_label = Label.new()
+		header_label.text = header
+		header_label.modulate = Color(1, 1, 1, 0.6)
+		grid_container.add_child(header_label)
+
 	for key in GameConfig.default_values:
 		var label = Label.new()
 		label.text = label_overrides.get(key, key.replace("_", " ").capitalize())
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		grid_container.add_child(label)
 
 		var default_label = Label.new()
@@ -31,6 +40,7 @@ func populate_options():
 			var check_box = CheckBox.new()
 			check_box.name = key
 			check_box.button_pressed = GameConfig.get_value(key)
+			check_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 			check_box.toggled.connect(_on_toggled.bind(key))
 			grid_container.add_child(check_box)
 			check_box_nodes[key] = check_box
@@ -38,6 +48,7 @@ func populate_options():
 
 		var line_edit = LineEdit.new()
 		line_edit.name = key
+		line_edit.custom_minimum_size.x = VALUE_WIDTH
 		line_edit.text = str(GameConfig.get_value(key))
 		line_edit.connect("text_changed", Callable(self, "_on_text_changed").bind(key))
 		grid_container.add_child(line_edit)
