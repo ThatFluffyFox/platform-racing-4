@@ -22,7 +22,8 @@ func encode(layers: Node2D, bg: Node2D) -> Dictionary:
 				"lines": encode_lines(group_layer.get_node("Lines")),
 				"usertextboxobjects": encode_usertext(group_layer.get_node("UserTextboxes")),
 				"rotation": group_layer.get_node("TileMapLayer").rotation_degrees,
-				"depth": group_layer.depth
+				"depth": group_layer.depth,
+				"scale": group_layer.art_scale
 			}
 			level.layers.push_back(tile_layer)
 	return level

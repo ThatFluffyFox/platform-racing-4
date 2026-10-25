@@ -46,29 +46,17 @@ func _ready():
 	editor_events.connect_to([level_manager.level_decoder])
 	penciler.init(level_manager.layers, $BG, editor_events, null)
 	
+	Game.game = self
 	if !Game.pr2_level_id or Game.pr2_level_id == '0':
 		_activate_game()
 	else:
 		print("Game: Loading level id: " + Game.pr2_level_id)
-		var http_request = get_node("HTTPRequest")
-		http_request.request_completed.connect(func(_result, _response_code, _headers, body):
-			var json = JSON.new()
-			json.parse(body.get_string_from_utf8())
-			var response = json.get_data()
-			if !response:
-				return
-			if response.get("error", ''):
-				return
-			
-			level_manager.decode_level(response, false)
-			_activate_game()
-		)
-		if Game.pr2_level_id:
-			var error = http_request.request(ApiManager.get_base_url() + "/pr2/level/" + Game.pr2_level_id)
-			if error != OK:
-				push_error("An error occurred in the HTTP request.")
-	
-	Game.game = self
+		var level: Dictionary = await Pr2LevelImporter.fetch(self, Game.pr2_level_id)
+		if level.has("error"):
+			push_error("Game: " + level.error)
+			return
+		level_manager.decode_level(level, false)
+		_activate_game()
 
 
 func _activate_game() -> void:

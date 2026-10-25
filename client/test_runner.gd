@@ -17,7 +17,8 @@ static func run_tests(main_instance: Main):
 		tests_to_run = ["game"]
 
 	if "all" in tests_to_run:
-		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics"] # "user_settings" is flaky, skip for now
+		# "user_settings" is flaky, skip for now
+		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics"]
 
 	for test in tests_to_run:
 		match test:
@@ -48,7 +49,7 @@ static func _run_game_test(main_instance: Main):
 	var player_manager = game_scene.get_node("PlayerManager")
 	var character = player_manager.get_character()
 	if character:
-		if not character.is_on_floor():
+		if not character.is_grounded():
 			print("Character is not on the floor at the end of the game test.")
 			print("Character position: ", character.position)
 			print("Character velocity: ", character.velocity)

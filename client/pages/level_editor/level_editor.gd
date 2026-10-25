@@ -31,6 +31,8 @@ var default_level: Dictionary = {
 @onready var editor_camera: Camera2D = $EditorCamera
 @onready var now_editing_panel: Node2D = $UI/NowEditingPanel
 @onready var game_config_panel = $UI/GameConfigPanel
+@onready var import_pr2 = $UI/ImportPR2
+@onready var pr2_import_panel = $UI/Pr2ImportPanel
 
 @onready var cursor = $UI/Cursor
 @onready var penciler: Node2D = $Penciler
@@ -57,6 +59,8 @@ func _ready():
 	save.connect("pressed", _on_save_pressed)
 	test.connect("pressed", _on_test_pressed)
 	clear.connect("pressed", _on_clear_pressed)
+	import_pr2.connect("pressed", _on_import_pr2_pressed)
+	pr2_import_panel.level_imported.connect(_on_pr2_level_imported)
 	load_panel.connect("level_load", _on_level_load)
 	explore_panel.connect("explore_load", _on_explore_load)
 	game_client.connect("request_editor_load", _on_request_editor_load)
@@ -129,6 +133,47 @@ func _on_test_pressed():
 	LevelEditor.current_level = level_manager.encode_level()
 	FileManager.save_to_file(LevelEditor.current_level)
 	Main.set_scene(Main.TESTER, { "level": LevelEditor.current_level })
+
+
+func _on_import_pr2_pressed():
+	explore_panel.close()
+	save_panel.close()
+	load_panel.close()
+	confirm_delete_panel.close()
+	pr2_import_panel.initialize()
+
+
+func _on_pr2_level_imported(level: Dictionary):
+	FileManager.set_current_level_name("")
+	level_manager.clear()
+	LevelEditor.current_level = level
+	await get_tree().create_timer(0.1).timeout
+	level_manager.decode_level(level, true)
+	level_manager.layers.init(level_manager.tiles)
+	layer_panel_node.render()
+	_move_camera_to_start(level)
+
+
+## Centers the editor camera on the level's start block (or its first block).
+func _move_camera_to_start(level: Dictionary):
+	var start_tile = _find_tile(level, 12)
+	if start_tile == null:
+		start_tile = _find_tile(level, -1)
+	if start_tile == null:
+		return
+	editor_camera.position = (start_tile + Vector2(0.5, 0.5)) * Vector2(Settings.tile_size)
+	editor_camera.reset_smoothing()
+
+
+## Position of the first tile with this block id (-1 = any block), or null.
+func _find_tile(level: Dictionary, wanted_id: int):
+	for layer in level.get("layers", []):
+		for chunk in layer.get("chunks", []):
+			for i in chunk.data.size():
+				var block_id: int = chunk.data[i]
+				if block_id != 0 and (wanted_id == -1 or block_id == wanted_id):
+					return Vector2(chunk.x + i % int(chunk.width), chunk.y + i / int(chunk.width))
+	return null
 
 
 func _on_clear_pressed():
