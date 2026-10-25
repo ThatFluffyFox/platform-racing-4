@@ -91,8 +91,8 @@ func _run_live(character: Character, inputs: Array) -> void:
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		var pr2 := character.pr2_physics
-		print("%d %.3f %.3f %s %s %d" % [
-			i, character.position.x, character.position.y, pr2.grounded, pr2.mode,
+		print("%d %.12f %.12f %.12f %.12f %s %s %s %d" % [
+			i, pr2.x, pr2.y, pr2.vx, pr2.vy, pr2.grounded, pr2.crouching, pr2.mode,
 			pr2.course_rotation])
 	for action in actions.values():
 		Input.action_release(action)
