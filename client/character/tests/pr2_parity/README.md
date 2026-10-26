@@ -25,6 +25,18 @@ sword, super jump, jet pack, speed burst and teleport; `I` in the inputs
 holds the item key). Each run prints the first
 differing frame for any scenario that doesn't match.
 
+Known, deliberate differences (counted separately):
+
+- A mine blast on a rotated course is aimed away from the mine. PR2 mixes
+  rotated and unrotated positions there, so its direction depends on where
+  the level sits.
+
+PR4 levels sit around (0, 0) while PR2 levels sit at large positive
+coordinates, so the port also rounds tile lookups down (PR2 truncates toward
+zero, which is the same for positive numbers) and treats PR2's "block next
+to this one" checks as empty on rotated courses, which is what they always
+find on real PR2 levels.
+
 To step a single scenario in PR4 only:
 
 ```

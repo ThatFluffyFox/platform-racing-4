@@ -43,6 +43,8 @@ func _run_scenario(scenario: Dictionary) -> void:
 	character.stats.jump = scenario.jump
 
 	if scenario.get("live", false):
+		if scenario.get("item") != null:
+			character.set_item(int(scenario.item))
 		await _run_live(character, scenario.inputs)
 	else:
 		_run_steps(character, tiles, scenario)
@@ -83,7 +85,7 @@ func _run_steps(character: Character, tiles: Tiles, scenario: Dictionary) -> voi
 ## Drives the real character loop with key presses, two physics ticks per input.
 func _run_live(character: Character, inputs: Array) -> void:
 	character.active = true
-	var actions := {"L": "left", "R": "right", "J": "jump", "D": "down"}
+	var actions := {"L": "left", "R": "right", "J": "jump", "D": "down", "I": "item"}
 	for i in inputs.size():
 		var keys: String = inputs[i]
 		for key in actions:

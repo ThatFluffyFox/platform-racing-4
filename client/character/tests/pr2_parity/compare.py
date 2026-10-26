@@ -96,19 +96,31 @@ def main(pool, start, count):
     pr2 = run(haxe_command(paths), PR2_CLIENT)
     pr4 = run(godot_command(paths), CLIENT)
     bad = 0
+    known = 0
     for path in paths:
         a_rows, b_rows = pr2.get(path, []), pr4.get(path, [])
         if not a_rows or len(a_rows) != len(b_rows):
             print(f"{path}: frame counts {len(a_rows)} (PR2) vs {len(b_rows)} (PR4)")
             bad += 1
             continue
-        for a, b in zip(a_rows, b_rows):
+        for i, (a, b) in enumerate(zip(a_rows, b_rows)):
             if not same(a, b):
+                if is_rotated_mine_blast(a_rows, i):
+                    known += 1
+                    break
                 print(f"{path}: frame {a[0]}\n  PR2 {' '.join(a)}\n  PR4 {' '.join(b)}")
                 bad += 1
                 break
-    print(f"{pool}: {count - bad}/{count} scenarios match")
+    print(f"{pool}: {count - bad - known}/{count} scenarios match, {known} differ only by "
+          f"a known change, {bad} differ")
     return bad
+
+
+def is_rotated_mine_blast(rows, i):
+    """Known change: PR4 aims a mine blast on a rotated course away from the
+    mine. PR2's direction there depends on where the level sits."""
+    previous_mode = rows[i - 1][7] if i else rows[i][7]
+    return rows[i][7] == "hurt" and previous_mode != "hurt" and rows[i][8] != "0"
 
 
 if __name__ == "__main__":

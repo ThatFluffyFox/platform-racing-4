@@ -780,6 +780,11 @@ func _hit_mine(block: Dictionary) -> void:
 	if _is_block_removed(block):
 		return
 	var center: Vector2 = Vector2(block.x, block.y) * TILE + Vector2(TILE / 2, TILE / 2)
+	# PR2 compares the unrotated mine position with the rotated player position,
+	# which on a rotated course gives a direction that depends on where the
+	# level sits. Rotating the mine into the player's frame keeps the blast
+	# pointing away from the mine; unrotated courses are unchanged.
+	center = _rotate_exact(center, -course_rotation)
 	var angle := atan2((y - STANDING_HEIGHT / 2) - center.y, x - center.x)
 	var invincible: bool = character.invincibility.is_active()
 	if not invincible:
@@ -1072,7 +1077,7 @@ func _return_to_last_safe_spot() -> void:
 func _is_past_map_return_boundary() -> bool:
 	if map_bounds_dirty:
 		_update_map_bounds()
-	var p := _rotate_point(x, y, course_rotation)
+	var p := _rotate_to_level(x, y, course_rotation)
 	return (course_rotation == 0 and p.y > map_max.y + MAP_RETURN_MARGIN) \
 		or (absi(course_rotation) == 180 and p.y < map_min.y - MAP_RETURN_MARGIN) \
 		or (course_rotation == 90 and p.x > map_max.x + MAP_RETURN_MARGIN) \
@@ -1116,7 +1121,7 @@ func _player_occupies_tile(target_x: int, target_y: int) -> bool:
 ## tile coordinates in PR2's level frame. For blocks on gears and other moving
 ## tile maps they are the nearest equivalent tile.
 func _get_block_at_pixel(px: float, py: float):
-	var c := _rotate_point(px, py, course_rotation)
+	var c := _rotate_to_level(px, py, course_rotation)
 	var tile := Vector2i(_tile_index(c.x), _tile_index(c.y))
 	var block = _main_block(tile)
 	if block != null:
@@ -1125,7 +1130,7 @@ func _get_block_at_pixel(px: float, py: float):
 
 
 func _block_at_pixel_any(px: float, py: float):
-	var c := _rotate_point(px, py, course_rotation)
+	var c := _rotate_to_level(px, py, course_rotation)
 	var tile := Vector2i(_tile_index(c.x), _tile_index(c.y))
 	var block = _main_block(tile)
 	if block == null:
@@ -1191,16 +1196,25 @@ func _block_with_open_space_below(block):
 
 
 # PR2 passes level-frame tile positions here as if they were gravity-frame
-# pixels. That's wrong once the course is rotated, but it is what PR2 does.
+# pixels. Once the course is rotated, that points far outside any PR2 level
+# (PR2 levels sit at large positive coordinates), so PR2 always finds nothing.
+# PR4 levels sit around 0, where the same math can hit real blocks, so a
+# rotated course returns nothing directly, like PR2.
 func _get_block_left_of(block: Dictionary):
+	if course_rotation != 0:
+		return null
 	return _get_block_at_pixel(block.x * TILE - TILE, block.y * TILE)
 
 
 func _get_block_right_of(block: Dictionary):
+	if course_rotation != 0:
+		return null
 	return _get_block_at_pixel(block.x * TILE + TILE, block.y * TILE)
 
 
 func _get_block_below(block: Dictionary):
+	if course_rotation != 0:
+		return null
 	return _get_block_at_pixel(block.x * TILE, block.y * TILE + TILE)
 
 
@@ -1555,6 +1569,15 @@ static func _rotate_point(px: float, py: float, rotation: int) -> Vector2:
 		rx = _as3_int(-py)
 		ry = _as3_int(px)
 	return Vector2(rx, ry)
+
+
+## Gravity-frame pixel -> level pixel for tile lookups. PR2 truncates toward
+## zero here, which is the same as rounding down because PR2 levels always sit
+## at positive coordinates. PR4 levels sit around 0, where truncating would
+## look up the wrong tile, so this rounds down.
+static func _rotate_to_level(px: float, py: float, rotation: int) -> Vector2:
+	var v := _rotate_exact(Vector2(px, py), rotation)
+	return Vector2(floor(v.x), floor(v.y))
 
 
 ## Same rotation without truncation, for converting positions to and from PR4.
