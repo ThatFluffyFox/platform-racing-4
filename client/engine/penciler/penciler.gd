@@ -1,11 +1,20 @@
 extends Node2D
 
 const CLEANUP_INTERVAL = 60  # 600 seconds (1 minutes)
+static var ERASE_MATERIAL := _make_erase_material()
 var last_cleanup_time = 0
 var tile_update_timestamps = {}
 var layers: Layers
 var bg: Node2D
 var layer_panel: Node2D
+
+## Subtract blending removes alpha too, so an opaque white line drawn this way
+## inside a CanvasGroup leaves a transparent hole.
+static func _make_erase_material() -> CanvasItemMaterial:
+	var material := CanvasItemMaterial.new()
+	material.blend_mode = CanvasItemMaterial.BLEND_MODE_SUB
+	return material
+
 
 func init(p_layers: Layers, p_bg, event_source, p_layer_panel: Node2D) -> void:
 	layer_panel = p_layer_panel
@@ -78,6 +87,12 @@ func _on_level_event(event: Dictionary) -> void:
 				line.width = event.width
 			if event.has("thickness"):
 				line.width = event.thickness
+			# PR2-style eraser stroke: cuts its shape out of the art drawn before it
+			# on this layer (Lines is a CanvasGroup, so nothing else is affected).
+			if event.get("mode", "draw") == "erase":
+				line.set_meta("erase", true)
+				line.default_color = Color.WHITE
+				line.material = ERASE_MATERIAL
 
 	if event.type == EditorEvents.ADD_LAYER:
 		var layer := layers.add_layer(event.name)

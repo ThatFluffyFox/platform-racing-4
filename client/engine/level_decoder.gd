@@ -83,7 +83,8 @@ func decode_lines(layer_name: String, objects: Array) -> void:
 			"position": {"x": object.x, "y": object.y},
 			"points": points_array,
 			"color": line_color,
-			"thickness": object.thickness
+			"thickness": object.thickness,
+			"mode": object.get("mode", "draw"),
 		})
 
 

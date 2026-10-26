@@ -77,6 +77,8 @@ func encode_lines(node: Node2D) -> Array:
 			"color": line.default_color,
 			"thickness": line.width
 		}
+		if line.get_meta("erase", false):
+			lineData.mode = "erase"
 		lines.push_back(lineData)
 	return lines
 

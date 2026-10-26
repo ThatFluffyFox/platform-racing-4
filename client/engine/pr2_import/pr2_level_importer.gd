@@ -258,7 +258,9 @@ static func _parse_art(commands: Array) -> Array:
 				lines.push_back(_parse_line(content, color, thickness, mode))
 			"m":
 				mode = content
-	return _run_eraser(lines)
+	# Eraser strokes stay in order as "erase" lines: like Flash PR2, they cut
+	# their shape out of whatever this layer drew before them.
+	return lines
 
 
 static func _parse_line(text: String, color: String, thickness: int, mode: String) -> Dictionary:
@@ -281,145 +283,5 @@ static func _parse_line(text: String, color: String, thickness: int, mode: Strin
 		"points": points,
 		"color": color.rpad(6, "0"),
 		"thickness": thickness,
-		"mode": mode,
+		"mode": "erase" if mode == "erase" else MODE_DRAW,
 	}
-
-
-static func _run_eraser(lines: Array) -> Array:
-	var draw_lines := []
-	for line in lines:
-		if line.mode == MODE_DRAW:
-			_cache_geometry(line)
-			draw_lines.push_back(line)
-		elif line.points.is_empty() or (line.points.size() == 1 \
-				and line.points[0].x == 0 and line.points[0].y == 0):
-			draw_lines = _erase_within_radius(draw_lines, line.x, line.y, line.thickness / 2.0)
-		else:
-			draw_lines = _erase_segment_list(draw_lines, line)
-	for line in draw_lines:
-		line.erase("_global")
-		line.erase("_bounds")
-	return draw_lines
-
-
-## Stores a line's points in level space and its bounding box, so erasing can
-## skip lines that are nowhere near the eraser.
-static func _cache_geometry(line: Dictionary) -> void:
-	var points := _global_points(line)
-	var bounds := Rect2(points[0], Vector2.ZERO)
-	for point in points:
-		bounds = bounds.expand(point)
-	line["_global"] = points
-	line["_bounds"] = bounds
-
-
-static func _erase_within_radius(draw_lines: Array, x: float, y: float, radius: float) -> Array:
-	var result := []
-	var center := Vector2(x, y)
-	for line in draw_lines:
-		for point in line._global:
-			if point.distance_to(center) > radius:
-				result.push_back(line)
-				break
-	return result
-
-
-static func _erase_segment_list(draw_lines: Array, erase_line: Dictionary) -> Array:
-	var result := []
-	var eraser := _global_points(erase_line)
-	var eraser_bounds := Rect2(eraser[0], Vector2.ZERO)
-	for point in eraser:
-		eraser_bounds = eraser_bounds.expand(point)
-	for line in draw_lines:
-		var points: Array = line._global
-		if points.size() < 2:
-			continue # the server drops single dots whenever a line eraser runs
-		var reach: float = (line.thickness + erase_line.thickness) / 2.0
-		if not eraser_bounds.grow(reach + 1).intersects(line._bounds):
-			result.push_back(line) # too far away to be touched
-			continue
-		var fully_erased := true
-		for point in points:
-			var nearest := INF
-			for i in range(1, eraser.size()):
-				nearest = minf(nearest, _distance_to_segment(point, eraser[i - 1], eraser[i]))
-			if nearest > reach:
-				fully_erased = false
-				break
-		if fully_erased:
-			continue
-		for pieces in _erase_segment(points, eraser, reach):
-			if pieces.size() > 0:
-				var piece := _local_line(pieces, line.thickness, line.color)
-				_cache_geometry(piece)
-				result.push_back(piece)
-	return result
-
-
-## Splits one line where the eraser crosses it or covers whole segments.
-static func _erase_segment(points: Array, eraser: Array, reach: float) -> Array:
-	if points.size() < 2 or eraser.size() < 2:
-		return [points]
-	var result := []
-	var current: Array = [points[0]]
-	for i in range(1, points.size()):
-		var p1: Vector2 = points[i - 1]
-		var p2: Vector2 = points[i]
-		var segment_erased := false
-		for j in range(1, eraser.size()):
-			var q1: Vector2 = eraser[j - 1]
-			var q2: Vector2 = eraser[j]
-			if _distance_to_segment(p1, q1, q2) <= reach \
-					and _distance_to_segment(p2, q1, q2) <= reach:
-				if current.size() > 1:
-					result.push_back(current)
-				current = []
-				segment_erased = true
-				break
-		if segment_erased:
-			if i + 1 < points.size():
-				current = [points[i]]
-			continue
-		for j in range(1, eraser.size()):
-			var hit = Geometry2D.segment_intersects_segment(p1, p2, eraser[j - 1], eraser[j])
-			if hit == null:
-				continue
-			var direction := (p2 - p1).normalized()
-			var before: Vector2 = hit - direction * reach
-			var after: Vector2 = hit + direction * reach
-			if p1 == p2:
-				before = p1
-				after = p2
-			if current.size() > 0 and current[-1].distance_to(before) > 0.1:
-				current.push_back(before)
-				result.push_back(current)
-			current = [after]
-			p1 = after
-		current.push_back(p2)
-	if current.size() > 1:
-		result.push_back(current)
-	return result
-
-
-static func _global_points(line: Dictionary) -> Array:
-	var origin := Vector2(line.x, line.y)
-	var points: Array = [origin]
-	for point in line.points:
-		points.push_back(origin + Vector2(point.x, point.y))
-	return points
-
-
-static func _local_line(points: Array, thickness: int, color: String) -> Dictionary:
-	var origin: Vector2 = points[0]
-	var local := []
-	for i in range(1, points.size()):
-		var p: Vector2 = points[i] - origin
-		local.push_back({"x": p.x, "y": p.y})
-	return {
-		"x": origin.x, "y": origin.y, "points": local,
-		"color": color, "thickness": thickness, "mode": MODE_DRAW,
-	}
-
-
-static func _distance_to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
-	return p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b))
