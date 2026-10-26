@@ -43,7 +43,7 @@ def make(seed, pool="mixed", frames=300):
         letters = "LRJDI" if pool == "items" else "LRJD"
         keys = "".join(k for k in letters if r.random() < (0.45 if k in "LR" else 0.3))
         inputs += [keys] * r.randint(1, 25)
-    item = r.choice([4, 5, 5, 11, 12, 13, 14]) if pool == "items" else None
+    item = r.choice([4, 5, 5, 8, 8, 11, 12, 13, 14]) if pool == "items" else None
     return {"item": item, "gravity": r.choice([1, 1, 0.5, 1.7]), "speed": r.randint(0, 100),
             "accel": r.randint(0, 100), "jump": r.randint(0, 100),
             "x": sx * 30 + 15, "y": sy * 30,

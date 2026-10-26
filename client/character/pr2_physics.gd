@@ -40,10 +40,17 @@ const FAST_ITEM_RELOAD_FRAMES := 22
 const LASER_SHOT_SPEED := 29.0
 const LASER_SHOT_FRAMES := 100
 const SHOT_EFFECT_DEFAULT_SPEED := 5.0
+const MINE_APPEAR_FRAMES := 33
+# Where PR2 places a mine from: its weapon hand in the standing pose.
+const MINE_HAND_OFFSET := Vector2(7.757170104980469, -23.49652557373047)
+# Landing on a bounce block slower than this (in gravity steps) doesn't bounce,
+# so walking across bounce blocks feels like PR4.
+const BOUNCE_MIN_GRAVITY_STEPS := 1.5
 
 # PR4 item ids that use PR2's item rules in PR2 physics mode.
 const ITEM_JETPACK := 4
 const ITEM_LASER_GUN := 5
+const ITEM_PORTABLE_MINE := 8
 const ITEM_SPEED_BURST := 11
 const ITEM_SUPER_JUMP := 12
 const ITEM_SWORD := 13
@@ -78,6 +85,7 @@ const BUMP_SOUND := preload("res://sounds/BumpSound.ogg")
 const JUMP_SOUND := preload("res://sounds/JumpSound.ogg")
 const SUPER_JUMP_SOUND := preload("res://sounds/SuperJumpSound.ogg")
 const EXPLODE_EFFECT := preload("res://tiles/mine/explode_effect.tscn")
+const MINE_SPAWN_EFFECT := preload("res://item_effects/portable_mine.tscn")
 
 # PR2 state, in PR2 pixels inside the gravity frame.
 var x: float = 0
@@ -119,6 +127,7 @@ var item_available := false
 var jet_pack_fuel := 0
 var speed_burst_frames := 0
 var laser_shots: Array = [] # in-flight shots that damage the first block they hit
+var pending_mines: Array = [] # mines that appear MINE_APPEAR_FRAMES after use
 
 # Per-block runtime state (crumble life, vanish timers, bump wobble).
 var block_states := {}
@@ -131,7 +140,7 @@ var sub_maps: Array = []
 var sub_maps_refresh := 0
 var map_min := Vector2.ZERO
 var map_max := Vector2.ZERO
-var map_bounds_dirty := true
+var map_bounds_dirty := true # PR2 measures the level once, when it starts
 var input := {"left": false, "right": false, "jump": false, "down": false, "item": false}
 var step_accumulator: float = 0
 var initialized := false
@@ -363,6 +372,7 @@ func step() -> void:
 	if rotate_frames_remaining > 0:
 		_update_rotation()
 	hurt_frames_remaining -= 1
+	var ready_mines := _tick_pending_mines()
 	_update_laser_shots()
 	_sync_held_item()
 	if item_reload > 0:
@@ -388,6 +398,7 @@ func step() -> void:
 
 	_update_speed_burst()
 	_update_block_states()
+	_place_mines(ready_mines)
 	_sync_status_to_pr4()
 
 
@@ -681,8 +692,9 @@ func _apply_stand_effect(block: Dictionary, pre_vy: float) -> void:
 		B_ICE:
 			accel_factor = 0.05
 		B_BOUNCE:
-			vy = -absf(pre_vy) * BOUNCE_BLOCK_MULTIPLIER
-			grounded = false
+			if absf(pre_vy) > gravity * BOUNCE_MIN_GRAVITY_STEPS:
+				vy = -absf(pre_vy) * BOUNCE_BLOCK_MULTIPLIER
+				grounded = false
 		B_MOVE:
 			_fire_pr4_event("stand", block)
 		_:
@@ -843,7 +855,6 @@ func _move_block_chain(bx: int, by: int, dx: int, dy: int) -> void:
 	if block_states.has(from_key):
 		block_states[_state_key(main_map, dest)] = block_states[from_key]
 		block_states.erase(from_key)
-	map_bounds_dirty = true
 
 
 func _start_rotate(block: Dictionary, direction: int) -> void:
@@ -884,7 +895,6 @@ func _finish_rotation() -> void:
 	rotate_direction = 0
 	course_tween_rotation = 0
 	_set_mode(MODE_LAND)
-	map_bounds_dirty = true
 	_mark_discontinuity()
 
 
@@ -893,7 +903,6 @@ func _remove_block(block: Dictionary) -> void:
 		return
 	TileEffects.shatter(block.tml, block.coords)
 	block_states.erase(_state_key(block.tml, block.coords))
-	map_bounds_dirty = true
 
 
 ## Calls a PR4 tile behavior (items, finish, teleports...). If it moves the
@@ -1236,8 +1245,8 @@ func _is_teleport(id: int) -> bool:
 
 ## True for PR4 items whose physics follow PR2's rules in this mode.
 static func handles_item(id: int) -> bool:
-	return id in [ITEM_JETPACK, ITEM_LASER_GUN, ITEM_SPEED_BURST, ITEM_SUPER_JUMP,
-			ITEM_SWORD, ITEM_TELEPORT]
+	return id in [ITEM_JETPACK, ITEM_LASER_GUN, ITEM_PORTABLE_MINE, ITEM_SPEED_BURST,
+			ITEM_SUPER_JUMP, ITEM_SWORD, ITEM_TELEPORT]
 
 
 ## Sets up PR2 item state when the character picks up a new item.
@@ -1258,6 +1267,11 @@ func _sync_held_item() -> void:
 			item_reload_frames = FAST_ITEM_RELOAD_FRAMES
 		ITEM_JETPACK:
 			jet_pack_fuel = JET_PACK_TOTAL_FUEL
+		ITEM_PORTABLE_MINE:
+			# PR4's placement preview points at PR4's tile, not PR2's.
+			var preview = node.get_node_or_null("VisualAid")
+			if preview:
+				preview.visible = false
 
 
 ## PR2's Item.setSpace: fires on a fresh press once reloaded (jet pack: while held).
@@ -1295,6 +1309,8 @@ func _use_held_item() -> void:
 			_set_player_x(dest_x)
 			_mark_discontinuity()
 			_consume_item_use()
+		ITEM_PORTABLE_MINE:
+			_use_mine_item()
 		ITEM_SPEED_BURST:
 			if speed_burst_frames > 0:
 				return
@@ -1302,6 +1318,46 @@ func _use_held_item() -> void:
 			accel *= 2
 			max_vel_x *= 2
 			character.speed_particles.emitting = true
+
+
+## PR2's mine item: picks the tile at an offset from the weapon hand and, if
+## it's empty, a mine appears there 33 frames later.
+func _use_mine_item() -> void:
+	var hand := Vector2(x + facing * MINE_HAND_OFFSET.x, y + MINE_HAND_OFFSET.y)
+	var probe := _rotate_point(_haxe_round(hand.x + 15), _haxe_round(hand.y + 10), course_rotation)
+	var tile := Vector2i(_tile_index(probe.x), _tile_index(probe.y))
+	if _cell_id(main_map, tile) != 0:
+		return
+	var effect := MINE_SPAWN_EFFECT.instantiate()
+	effect.position = main_map.map_to_local(tile)
+	main_map.add_child(effect)
+	effect.get_node("AnimationTimer").stop() # PR2 timing places the block, not the effect
+	pending_mines.push_back({"tile": tile, "frames": MINE_APPEAR_FRAMES, "effect": effect})
+	_consume_item_use()
+
+
+## Counts down pending mines; returns the ones due this frame.
+func _tick_pending_mines() -> Array:
+	var ready := []
+	var still_pending := []
+	for mine in pending_mines:
+		mine.frames -= 1
+		if mine.frames <= 0:
+			ready.push_back(mine)
+		else:
+			still_pending.push_back(mine)
+	pending_mines = still_pending
+	return ready
+
+
+func _place_mines(ready: Array) -> void:
+	for mine in ready:
+		if is_instance_valid(mine.effect):
+			mine.effect.queue_free()
+		if _cell_id(main_map, mine.tile) != 0:
+			continue # something else got there first
+		block_states.erase(_state_key(main_map, mine.tile))
+		main_map.set_cell(mine.tile, 0, CoordinateUtils.to_atlas_coords(B_MINE))
 
 
 ## PR2's laser shot: checks right next to the player first, then flies at
