@@ -1,7 +1,7 @@
 extends Tile
 class_name Arrow
 
-var ArrowActivateEffect: PackedScene = preload("res://tile_effects/arrow_activate_effect/arrow_activate_effect.tscn")
+const ARROW_ACTIVATE_EFFECT: PackedScene = preload("res://tile_effects/arrow_activate_effect/arrow_activate_effect.tscn")
 var horizontal_push_force = 125 # used for gliding left/right
 var vertical_push_force = 110 # used for gliding up/down
 var push_force = 110 # used for gliding the player after the push_force is decided
@@ -51,13 +51,18 @@ func push(node: Node2D, tile_map_layer: Node2D, coords: Vector2i, push_dir: Vect
 		else:
 			node.velocity += rotated_push_dir * push_force
 	
-	# add effect
+	show_effect(tile_map_layer, coords, push_dir)
+
+
+## The arrow that lights up on a block when it pushes (also used by PR2/PR3
+## physics). push_dir is the arrow's direction in the tile map.
+static func show_effect(tile_map_layer: Node2D, coords: Vector2i, push_dir: Vector2) -> void:
 	var effect_name = str(coords.x) + "-" + str(coords.y) + "-arrow"
 	if tile_map_layer.has_node(effect_name):
 		var existing_effect = tile_map_layer.get_node(effect_name)
 		existing_effect.get_node("AnimationPlayer").seek(0)
 		return
-	var effect = ArrowActivateEffect.instantiate()
+	var effect = ARROW_ACTIVATE_EFFECT.instantiate()
 	effect.position = (coords * Settings.tile_size) + Settings.tile_size_half
 	effect.rotation = push_dir.rotated(-PI / 2).angle()
 	effect.name = effect_name

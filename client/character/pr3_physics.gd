@@ -937,6 +937,10 @@ func _active_touch_block(block: Dictionary, side: String, _ms: float) -> void:
 		var index := _adjust_index_by_rotation(PUSH_DIRECTIONS.find(side_type), -rotation)
 		var direction: String = PUSH_DIRECTIONS[index]
 		var power: float = 1.0 # arrowPower
+		# Block.activateArrow
+		var arrow_dirs := {S_PUSH_UP: Vector2.UP, S_PUSH_DOWN: Vector2.DOWN,
+				S_PUSH_LEFT: Vector2.LEFT, S_PUSH_RIGHT: Vector2.RIGHT}
+		Arrow.show_effect(block.tml, block.coords, arrow_dirs[side_type])
 		var mx := multiplier_x
 		var my := multiplier_y
 		if direction == S_PUSH_UP:
@@ -1494,6 +1498,11 @@ func _update_blocks(_ms: float) -> void:
 				_set_block_visible(state, true)
 			else:
 				state.fade_in_at = time_ms + VANISH_RETRY_MS
+		if state.has("alpha") and is_instance_valid(state.tml):
+			var shown: float = state.alpha if state.get("active", true) else 0.0
+			if state.get("drawn_alpha", -1.0) != shown:
+				state.drawn_alpha = shown
+				Vanish.show_fade(state.tml, state.coords, shown)
 		if state.has("teleport_reactivate") and time_ms >= state.teleport_reactivate:
 			state.erase("teleport_reactivate")
 			state.teleport_active = true

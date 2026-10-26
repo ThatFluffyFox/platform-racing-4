@@ -694,6 +694,7 @@ func _on_right_hit(block: Dictionary) -> void:
 
 func _apply_stand_effect(block: Dictionary, pre_vy: float) -> void:
 	if _is_arrow(block.id):
+		_show_arrow(block)
 		var rotation := _arrow_effective_rotation(block.id)
 		if rotation == 0 and not crouching:
 			vy -= 10
@@ -722,6 +723,7 @@ func _apply_stand_effect(block: Dictionary, pre_vy: float) -> void:
 
 func _apply_bump_effect(block: Dictionary, pre_bump_y: float, pre_vy: float) -> void:
 	if _is_arrow(block.id):
+		_show_arrow(block)
 		var rotation := _arrow_effective_rotation(block.id)
 		if rotation == 0:
 			vy = -14 if not input.down and not crouching else 0
@@ -755,6 +757,7 @@ func _apply_bump_effect(block: Dictionary, pre_bump_y: float, pre_vy: float) -> 
 
 func _apply_side_hit_effect(block: Dictionary, player_tile_offset: int, pre_vx: float) -> void:
 	if _is_arrow(block.id):
+		_show_arrow(block)
 		_push_arrow(_arrow_effective_rotation(block.id))
 		return
 	match block.id:
@@ -1029,6 +1032,23 @@ func _update_block_states() -> void:
 		var state: Dictionary = block_states[key]
 		if state.get("wobbling", false):
 			_wobble_frame(state)
+		if state.has("alpha"):
+			_draw_fade(state, 0.0 if state.get("removed", false) else state.alpha)
+
+
+## Shows a vanish block's fade (PR4's tile only has visible / hidden).
+func _draw_fade(state: Dictionary, alpha: float) -> void:
+	if state.get("drawn_alpha", -1.0) == alpha or not is_instance_valid(state.tml):
+		return
+	state.drawn_alpha = alpha
+	Vanish.show_fade(state.tml, state.coords, alpha)
+
+
+## PR4's arrow glow on an arrow block the player touched.
+func _show_arrow(block: Dictionary) -> void:
+	var directions := {B_ARROW_DOWN: Vector2.DOWN, 7: Vector2.UP, B_ARROW_LEFT: Vector2.LEFT,
+			B_ARROW_RIGHT: Vector2.RIGHT}
+	Arrow.show_effect(block.tml, block.coords, directions.get(block.id, Vector2.UP))
 
 
 ## Flash Block.onBounceFrame. Display positions are stored in twips. Its stop
