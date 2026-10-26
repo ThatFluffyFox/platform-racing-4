@@ -1,10 +1,30 @@
 # PR2 physics parity check
 
-`character/pr2_physics.gd` is a port of Platform Racing 2's player physics.
-This folder checks it against PR2's own controller (`LocalPlayerController.hx`
-in the `platform-racing-2-client` repo): both games play the same random
-levels with the same key presses, and every frame's position, velocity,
-ground/crouch state, mode and course rotation must match.
+`character/pr2_physics.gd` follows Flash PR2 (`flash/character/LocalCharacter.as`,
+`flash/blocks/*`, `flash/items/*`, `flash/effects/*` and `Course.rotate` in the
+`platform-racing-2-client` repo). Flash is the reference.
+
+Flash can't be run here, so this folder compares the port with the HTML
+remake's controller (`LocalPlayerController.hx`) instead: both play the same
+random levels with the same key presses, frame by frame. Most frames match.
+Where the remake differs from Flash, the port follows Flash, so these show up
+as differences:
+
+- Bump wobble: Flash's block wobble never stops (its stop check compares posY
+  with x), display positions are stored in twips, and standing on a block
+  uses its display position. A bumped block can stay a twip or so off.
+- Landing: after a landing check Flash always sets grounded, even when a
+  crumble block broke under the player.
+- Rotate blocks: no "already rotating" check; a second rotate block mid-turn
+  reverses the turn in progress.
+- Vanish blocks: Flash's alpha steps (1/256), re-triggering during fade-in,
+  and occupancy from the frame-start segments.
+- Mines: Flash's placement (converted with the rotation when it appears),
+  a mine hit can hurt during a rotation, and the blast uses the block's
+  display position.
+- Laser and sword: hits wobble the block; the sword damages blocks at six
+  points; both start from the weapon position.
+- Push blocks: Flash's chain push and frame-start occupancy.
 
 ## Setup
 
@@ -25,11 +45,6 @@ sword, super jump, jet pack, speed burst and teleport; `I` in the inputs
 holds the item key). Each run prints the first
 differing frame for any scenario that doesn't match.
 
-Known, deliberate difference (counted separately): mines follow Flash PR2
-rather than the HTML remake. Flash converts a pending mine's spot with the
-course rotation at the moment it appears, so a rotation in between sends the
-mine elsewhere (the "mine disappears" rotate glitch). The remake doesn't do
-this yet (its TODO lists it as an open bug).
 
 PR4 levels sit around (0, 0) while PR2 levels sit at large positive
 coordinates, so the port rounds tile lookups down (PR2 truncates toward zero,

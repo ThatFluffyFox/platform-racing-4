@@ -1,7 +1,9 @@
-"""Checks PR4's PR2 physics against PR2's own player controller.
+"""Compares PR4's PR2 physics with the HTML remake's player controller.
 
-Builds random levels and key presses, runs them through both games, and
-reports the first frame where position, velocity or state differ.
+The port follows Flash PR2; the remake is used here because Flash can't be
+run. Builds random levels and key presses, runs them through both, and
+reports the first frame where position, velocity or state differ. See
+README.md for the places where the remake (not the port) differs from Flash.
 
 Usage: python3 compare.py [pool] [first_seed] [count]
 Pools: mixed, rotate, hazard, movers, tall, items. See README.md for setup.

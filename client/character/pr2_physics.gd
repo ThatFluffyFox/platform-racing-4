@@ -23,11 +23,9 @@ const DEFAULT_GRAVITY := 0.7
 const MINE_HIT_SPEED := 50.0
 const VELOCITY_ZERO_EPSILON := 1e-9
 const TWIPS_PER_PIXEL := 20.0
-const ROTATE_FRAMES := 30
 const HURT_FRAMES := 60
 const FROZEN_SOLID_FRAMES := 54
 const CRUMBLE_INITIAL_LIFE := 10
-const VANISH_FADE_FRAMES := 10
 const VANISH_REAPPEAR_FRAMES := 54
 const BOUNCE_BLOCK_MULTIPLIER := 1.1
 const LASER_RECOIL := 15.0
@@ -102,10 +100,11 @@ var jump_vel_boost: float = 0
 var crouch_charge: float = 0
 var water_ticks: float = 0
 var hurt_frames_remaining := 0
+var frame_segs: Array = [] # Flash Character.seg1/seg2, set at the start of each frame
 var frozen_solid_frames_remaining := 0
 var facing := 1
 var course_rotation := 0
-var rotate_frames_remaining := 0
+var rotating := false # Flash Course.rotate is running
 var rotate_direction := 0
 var course_tween_rotation := 0
 var last_safe_x: float = 0
@@ -270,7 +269,7 @@ func _reset_motion_state() -> void:
 	jump_vel_boost = 0
 	crouch_charge = 0
 	water_ticks = 0
-	rotate_frames_remaining = 0
+	rotating = false
 	rotate_direction = 0
 	course_tween_rotation = 0
 	step_accumulator = 0
@@ -369,7 +368,8 @@ func _vec_from_pr4(v: Vector2) -> Vector2:
 func step() -> void:
 	_read_stats()
 	_set_player_pos(_haxe_round(x), _haxe_round(y))
-	if rotate_frames_remaining > 0:
+	_update_segs()
+	if rotating:
 		_update_rotation()
 	hurt_frames_remaining -= 1
 	var ready_mines := _tick_pending_mines()
@@ -575,9 +575,12 @@ func _refresh_block_refs() -> Dictionary:
 	}
 
 
+## Flash updateGrounded: stand on the floor block, then grounded = true even if
+## that block crumbled away during onStand.
 func _update_grounded(refs: Dictionary) -> bool:
 	if refs.floor_center != null and refs.ceiling == null:
 		_on_stand(refs.floor_center)
+		grounded = true
 		return true
 	grounded = false
 	return false
@@ -610,9 +613,9 @@ func _on_stand(block: Dictionary) -> void:
 	if block.id == B_CRUMBLE:
 		_apply_crumble_force(block, stand_force)
 		if _is_block_removed(block):
-			grounded = false
 			return
-	_set_player_y(_rotated_block_pos(block).y)
+	# Flash: player.y = rotatedPos.y + posY - y (y includes the bump wobble)
+	_set_player_y(_rotated_block_pos(block).y - _block_display_offset(block).y)
 	vy = 0
 	grounded = true
 	if _is_safe_stand_block(block):
@@ -628,7 +631,7 @@ func _on_bump(block: Dictionary) -> void:
 		_apply_crumble_force(block, bump_force)
 		if _is_block_removed(block):
 			return
-	var bounce_offset := _block_bounce_offset(block)
+	var bounce_offset := _block_bounce_offset(block) # Flash rotatePoint(x - posX, y - posY)
 	var height := STANDING_HEIGHT / 2 if crouching else STANDING_HEIGHT
 	_set_player_y(_rotated_block_pos(block).y + bounce_offset.y + TILE + height)
 	vy *= -0.25
@@ -776,24 +779,37 @@ func _arrow_effective_rotation(id: int) -> int:
 	return _normalize_rotation(course_rotation + base)
 
 
+## Flash MineBlock.hitPlayer: the angle uses the block's display position
+## (including its wobble) against the player's rotated position, then
+## LocalCharacter.hit and the mine explodes.
 func _hit_mine(block: Dictionary) -> void:
 	if _is_block_removed(block):
 		return
-	var center: Vector2 = Vector2(block.x, block.y) * TILE + Vector2(TILE / 2, TILE / 2)
-	# Like PR2, this compares the unrotated mine position with the rotated player
-	# position, so on a rotated course the push depends on where the level sits.
-	var angle := atan2((y - STANDING_HEIGHT / 2) - center.y, x - center.x)
-	var invincible: bool = character.invincibility.is_active()
-	if not invincible:
-		vx += cos(angle) * MINE_HIT_SPEED
-		vy += sin(angle) * MINE_HIT_SPEED
+	var display: Vector2 = Vector2(block.x, block.y) * TILE + _block_display_offset(block)
+	var dx := x - (display.x + 15)
+	var dy := (y - STANDING_HEIGHT / 2) - (display.y + 15)
+	var angle := atan2(dy, dx)
+	_player_hit(cos(angle) * MINE_HIT_SPEED, sin(angle) * MINE_HIT_SPEED)
+	_explode_mine(block)
+
+
+## Flash LocalCharacter.hit (no hats): push, and hurt unless frozen solid.
+## There's no check for the rotation pause, so a hit mid-rotation hurts.
+func _player_hit(push_x: float, push_y: float) -> void:
+	if character.invincibility.is_active():
+		return
+	vx += push_x
+	vy += push_y
+	if mode != MODE_FROZEN_SOLID:
+		_set_mode(MODE_HURT)
+		_begin_hurt_recovery()
+
+
+func _explode_mine(block: Dictionary) -> void:
 	var effect := EXPLODE_EFFECT.instantiate()
 	effect.position = Vector2(block.coords * Settings.tile_size) + Vector2(Settings.tile_size_half)
 	block.tml.add_child(effect)
 	_remove_block(block)
-	if mode != MODE_PAUSE and not invincible:
-		_set_mode(MODE_HURT)
-		_begin_hurt_recovery()
 
 
 func _begin_hurt_recovery() -> void:
@@ -816,66 +832,77 @@ func _apply_crumble_force(block: Dictionary, force: int) -> void:
 		TileEffects.crumble(block.tml, block.coords)
 
 
+## Flash VanishBlock.activate: (re)start fading out from the current alpha.
+## The fade ticks from the next frame (a new ENTER_FRAME listener).
 func _activate_vanish(block: Dictionary) -> void:
 	var state := _block_state(block)
-	var idle := not state.has("vanish_reappear") and not state.has("vanish_fade") \
-			and not state.has("vanish_fade_in")
-	if idle:
-		state.vanish_fade = VANISH_FADE_FRAMES + 1
+	if state.get("fade", "") == "out":
+		return
+	state.erase("reappear")
+	state.fade = "out"
+	state.fade_started = true
+	if not state.has("alpha"):
+		state.alpha = 1.0
 
 
+## Flash PushBlock.push: the direction is rotated into the level, then
+## Block.move pushes any push block in front first and moves this one only if
+## the destination is empty and no player stood there at the frame's start.
 func _push_block(block: Dictionary, dx: int, dy: int) -> void:
 	if not block.main:
 		return
 	var rotated := _rotate_point(dx, dy, course_rotation)
-	if not _can_move_block_chain(block.x, block.y, int(rotated.x), int(rotated.y)):
-		return
-	_move_block_chain(block.x, block.y, int(rotated.x), int(rotated.y))
+	_flash_move_block(block.coords, Vector2i(int(rotated.x), int(rotated.y)))
 
 
-func _can_move_block_chain(bx: int, by: int, dx: int, dy: int) -> bool:
-	var dest := Vector2i(bx + dx, by + dy)
-	var dest_id := _cell_id(main_map, dest)
-	if dest_id != 0:
-		if dest_id != B_PUSH:
-			return false
-		if not _can_move_block_chain(dest.x, dest.y, dx, dy):
-			return false
-	return not _player_occupies_tile(dest.x, dest.y)
-
-
-func _move_block_chain(bx: int, by: int, dx: int, dy: int) -> void:
-	var from := Vector2i(bx, by)
-	var dest := Vector2i(bx + dx, by + dy)
+func _flash_move_block(from: Vector2i, delta: Vector2i) -> void:
+	var dest := from + delta
 	if _cell_id(main_map, dest) == B_PUSH:
-		_move_block_chain(dest.x, dest.y, dx, dy)
+		_flash_move_block(dest, delta)
+	if _cell_id(main_map, from) == 0:
+		return
+	if _flash_map_has_block(dest) or _player_occupies_tile(dest.x, dest.y):
+		return
 	var atlas := main_map.get_cell_atlas_coords(from)
 	var alt := main_map.get_cell_alternative_tile(from)
 	main_map.set_cell(from, -1)
 	main_map.set_cell(dest, 0, atlas, alt)
 	var from_key := _state_key(main_map, from)
 	if block_states.has(from_key):
-		block_states[_state_key(main_map, dest)] = block_states[from_key]
+		var state: Dictionary = block_states[from_key]
 		block_states.erase(from_key)
+		state.coords = dest
+		# Block.setSeg puts the display back on the new spot; the wobble's
+		# velocity keeps running.
+		if state.has("disp"):
+			state.disp = Vector2(dest) * TILE
+		block_states[_state_key(main_map, dest)] = state
 
 
+## Flash's block map holds every placed block except start blocks and egg
+## spawners (water, safety nets and vanished blocks count).
+func _flash_map_has_block(tile: Vector2i) -> bool:
+	var id := _cell_id(main_map, tile)
+	return id != 0 and id != 12 and id != 31
+
+
+## Flash RotateBlock.onBump + Course.startRotate. There's no "already
+## rotating" check: bumping another rotate block mid-turn just changes the
+## direction of the turn in progress.
 func _start_rotate(block: Dictionary, direction: int) -> void:
-	if rotate_frames_remaining > 0:
-		return
 	_set_mode(MODE_PAUSE)
 	vx = 0
 	vy = 0
-	target_vel_x = 0
-	grounded = false
 	rotate_direction = direction
-	rotate_frames_remaining = ROTATE_FRAMES
-	course_tween_rotation = 0
+	rotating = true
 
 
+## Flash Course.rotate: 3 degrees a frame until the turn reaches 90 degrees in
+## its current direction, then the course rotation is applied that way.
 func _update_rotation() -> void:
 	course_tween_rotation += rotate_direction * 3
-	rotate_frames_remaining -= 1
-	if rotate_frames_remaining == 0:
+	if (rotate_direction > 0 and course_tween_rotation >= 90) \
+			or (rotate_direction < 0 and course_tween_rotation <= -90):
 		_finish_rotation()
 
 
@@ -894,6 +921,7 @@ func _finish_rotation() -> void:
 		last_safe_y = -last_safe_x
 		last_safe_x = safe_x
 		course_rotation = _normalize_rotation(course_rotation - 90)
+	rotating = false
 	rotate_direction = 0
 	course_tween_rotation = 0
 	_set_mode(MODE_LAND)
@@ -937,55 +965,80 @@ func _fire_pr4_event(event: String, block: Dictionary) -> void:
 # ---------------------------------------------------------------------------
 
 func _update_block_states() -> void:
-	# Three passes, in PR2's order.
+	# Fade-outs, then fade-ins, then the reappear timers (the remake's order,
+	# which was checked against Flash traces).
 	for key in block_states.keys():
 		var state: Dictionary = block_states[key]
-		if state.has("vanish_fade"):
-			var frames: int = state.vanish_fade - 1
-			if frames <= 0:
-				state.erase("vanish_fade")
-				state.removed = true
-				state.vanish_reappear = VANISH_REAPPEAR_FRAMES
-				_set_block_visible(state, false)
-			else:
-				state.vanish_fade = frames
+		if state.get("fade", "") != "out":
+			continue
+		if state.get("fade_started", false):
+			state.fade_started = false
+			continue
+		state.alpha = _flash_alpha(state.alpha - 0.1)
+		if state.alpha <= 0:
+			state.alpha = 0.0
+			state.removed = true
+			state.fade = ""
+			state.reappear = VANISH_REAPPEAR_FRAMES
+			_set_block_visible(state, false)
 	for key in block_states.keys():
 		var state: Dictionary = block_states[key]
-		if state.has("vanish_fade_in"):
-			var frames: int = state.vanish_fade_in - 1
-			if frames <= 0:
-				state.erase("vanish_fade_in")
-			else:
-				state.vanish_fade_in = frames
+		if state.get("fade", "") != "in":
+			continue
+		if state.get("fade_started", false):
+			state.fade_started = false
+			continue
+		state.alpha = _flash_alpha(state.alpha + 0.1)
+		if state.alpha >= 1:
+			state.alpha = 1.0
+			state.fade = ""
 	for key in block_states.keys():
 		var state: Dictionary = block_states[key]
-		if state.has("vanish_reappear"):
-			var frames: int = state.vanish_reappear - 1
-			if frames > 0:
-				state.vanish_reappear = frames
-			elif not (state.main and _player_occupies_tile(state.coords.x, state.coords.y)):
-				state.erase("vanish_reappear")
-				state.removed = false
-				state.vanish_fade_in = VANISH_FADE_FRAMES - 2
-				_set_block_visible(state, true)
-			else:
-				state.vanish_reappear = VANISH_REAPPEAR_FRAMES
+		if not state.has("reappear"):
+			continue
+		state.reappear -= 1
+		if state.reappear > 0:
+			continue
+		state.erase("reappear")
+		# Flash VanishBlock.tryReappear
+		if not (state.main and _player_occupies_tile(state.coords.x, state.coords.y)):
+			state.alpha = _flash_alpha(0.2)
+			state.fade = "in"
+			state.removed = false
+			_set_block_visible(state, true)
+		else:
+			state.fade = "out"
+			state.fade_started = true
 
 	for key in block_states.keys():
 		var state: Dictionary = block_states[key]
-		if not state.has("bounce_vx"):
-			continue
-		state.bounce_vx *= 0.5
-		state.bounce_vy *= 0.5
-		state.bounce_x += state.bounce_vx
-		state.bounce_y += state.bounce_vy
-		state.bounce_x += -state.bounce_x * 0.35
-		state.bounce_y += -state.bounce_y * 0.35
-		if absf(state.bounce_x) < 0.25 and absf(state.bounce_y) < 0.25:
-			state.bounce_x = 0.0
-			state.bounce_y = 0.0
-			state.erase("bounce_vx")
-			state.erase("bounce_vy")
+		if state.get("wobbling", false):
+			_wobble_frame(state)
+
+
+## Flash Block.onBounceFrame. Display positions are stored in twips. Its stop
+## check compares posY with x (a Flash bug), so it never stops by itself; it
+## only goes quiet once nothing can change any more.
+func _wobble_frame(state: Dictionary) -> void:
+	var pos: Vector2 = Vector2(state.coords) * TILE
+	var disp: Vector2 = state.disp
+	state.bvx *= 0.5
+	state.bvy *= 0.5
+	disp.y = _flash_coordinate(disp.y + state.bvy)
+	disp.y = _flash_coordinate(disp.y + (pos.y - disp.y) * 0.35)
+	disp.x = _flash_coordinate(disp.x + state.bvx)
+	disp.x = _flash_coordinate(disp.x + (pos.x - disp.x) * 0.35)
+	if absf(pos.y - disp.y) < 0.25 and absf(pos.y - disp.x) < 0.25:
+		disp = pos
+		state.wobbling = false
+	elif state.bvx == 0 and state.bvy == 0 and disp == state.disp:
+		state.wobbling = false # settled for good
+	state.disp = disp
+
+
+## Flash stores DisplayObject alpha in 1/256 steps.
+static func _flash_alpha(value: float) -> float:
+	return floor(value * 256.0) / 256.0
 
 
 func _set_block_visible(state: Dictionary, visible: bool) -> void:
@@ -1003,22 +1056,30 @@ func _set_block_visible(state: Dictionary, visible: bool) -> void:
 	tml.set_cell(state.coords, 0, atlas, new_alt)
 
 
+## Flash Block.hitRotated: the hit is rotated into the level and becomes the
+## wobble velocity.
 func _start_block_bounce(block: Dictionary, hit_x: float, hit_y: float) -> void:
 	var velocity := _rotate_point(hit_x, hit_y, course_rotation)
 	var state := _block_state(block)
-	if not state.has("bounce_x"):
-		state.bounce_x = 0.0
-		state.bounce_y = 0.0
-	state.bounce_vx = velocity.x
-	state.bounce_vy = velocity.y
+	if not state.has("disp"):
+		state.disp = Vector2(block.coords) * TILE
+	state.bvx = velocity.x
+	state.bvy = velocity.y
+	state.wobbling = true
 
 
-func _block_bounce_offset(block: Dictionary) -> Vector2:
+## The block's display position minus its real position, in level space.
+func _block_display_offset(block: Dictionary) -> Vector2:
 	var key := _state_key(block.tml, block.coords)
-	if not block_states.has(key) or not block_states[key].has("bounce_x"):
+	if not block.main or not block_states.has(key) or not block_states[key].has("disp"):
 		return Vector2.ZERO
-	var state: Dictionary = block_states[key]
-	return _rotate_point(state.bounce_x, state.bounce_y, course_rotation)
+	return block_states[key].disp - Vector2(block.coords) * TILE
+
+
+## Flash onBump: rotatePoint(x - posX, y - posY, rotation), truncated.
+func _block_bounce_offset(block: Dictionary) -> Vector2:
+	var offset := _block_display_offset(block)
+	return _rotate_point(offset.x, offset.y, course_rotation)
 
 
 func _block_state(block: Dictionary) -> Dictionary:
@@ -1088,8 +1149,9 @@ func _update_map_bounds() -> void:
 	map_max = Vector2(rect.end - Vector2i.ONE) * TILE
 
 
-## PR2 checks the feet tile and the one above it, even while crouched.
-func _player_occupies_tile(target_x: int, target_y: int) -> bool:
+## Flash Character.updateSegs, run at the start of each frame (go()): the
+## feet tile and the one above it, even while crouched.
+func _update_segs() -> void:
 	var seg1 := _rotate_point(_tile_index(x), _tile_index(y), course_rotation)
 	var seg1_x := int(seg1.x)
 	var seg1_y := int(seg1.y)
@@ -1106,8 +1168,12 @@ func _player_occupies_tile(target_x: int, target_y: int) -> bool:
 	elif course_rotation == -90:
 		seg1_y += 1
 		seg2_y += 1
-	return (seg1_x == target_x and seg1_y == target_y) \
-			or (seg2_x == target_x and seg2_y == target_y)
+	frame_segs = [Vector2i(seg1_x, seg1_y), Vector2i(seg2_x, seg2_y)]
+
+
+## Flash Map.characterOccupiesSpace (uses the frame-start segments).
+func _player_occupies_tile(target_x: int, target_y: int) -> bool:
+	return Vector2i(target_x, target_y) in frame_segs
 
 
 # ---------------------------------------------------------------------------
@@ -1300,6 +1366,7 @@ func _use_held_item() -> void:
 		ITEM_SWORD:
 			vx += -SWORD_LUNGE if facing < 0 else SWORD_LUNGE
 			_item_visual("slash")
+			_slash()
 			_consume_item_use()
 		ITEM_SUPER_JUMP:
 			if crouching:
@@ -1399,20 +1466,27 @@ func _grow_map_bounds(pos: Vector2) -> void:
 		map_min.x = pos.x
 
 
-## PR2's laser shot: checks right next to the player first, then flies at
-## 29px a frame for up to 100 frames.
+## Where Flash's getWeaponEffectPos puts the held item (standing pose),
+## converted to int like the Flash callers do.
+func _weapon_pos() -> Vector2i:
+	return Vector2i(int(x + facing * MINE_HAND_OFFSET.x), int(y + MINE_HAND_OFFSET.y))
+
+
+## Flash LaserGun.useItem + ShotEffect: the shot starts 20px in front of the
+## weapon and checks for a block straight away (at the default speed of 5);
+## then it flies at 29px a frame for up to 100 frames. It stays put in the
+## level if the course rotates.
 func _fire_laser_shot() -> void:
-	var shot_x := x + (-20.0 if facing < 0 else 20.0)
-	var shot_y := y - 25
-	var block = _get_block_at_pixel(shot_x, shot_y)
-	if block != null:
-		_damage_block_from_item(block)
+	var weapon := _weapon_pos()
+	var shot := {
+		"x": float(weapon.x + (-20 if facing < 0 else 20)), "y": float(weapon.y),
+		"vx": -SHOT_EFFECT_DEFAULT_SPEED if facing < 0 else SHOT_EFFECT_DEFAULT_SPEED,
+		"rot": course_rotation, "frames": LASER_SHOT_FRAMES,
+	}
+	if _laser_shot_hit(shot):
 		return
-	laser_shots.push_back({
-		"x": shot_x, "y": shot_y,
-		"vx": -LASER_SHOT_SPEED if facing < 0 else LASER_SHOT_SPEED,
-		"frames": LASER_SHOT_FRAMES,
-	})
+	shot.vx = -LASER_SHOT_SPEED if facing < 0 else LASER_SHOT_SPEED
+	laser_shots.push_back(shot)
 
 
 func _update_laser_shots() -> void:
@@ -1421,27 +1495,54 @@ func _update_laser_shots() -> void:
 	var still_flying := []
 	for shot in laser_shots:
 		shot.x += shot.vx
+		var hit := _laser_shot_hit(shot)
 		shot.frames -= 1
-		var block = _get_block_at_pixel(shot.x, shot.y)
-		if block != null:
-			_damage_block_from_item(block)
-		elif shot.frames > 0:
+		if not hit and shot.frames > 0:
 			still_flying.push_back(shot)
 	laser_shots = still_flying
 
 
-func _damage_block_from_item(block: Dictionary) -> void:
+## Flash ShotEffect.position + checkCollisions.
+func _laser_shot_hit(shot: Dictionary) -> bool:
+	var display := _rotate_point(shot.x, shot.y, -(course_rotation - shot.rot))
+	var level := _rotate_point(display.x, display.y, course_rotation)
+	var block = _active_block_at_level(level)
+	if block == null:
+		return false
+	_damage_block(block, shot.vx)
+	return true
+
+
+## Flash Slash: six points in front of the weapon, 29px apart.
+func _slash() -> void:
+	var weapon := _weapon_pos()
+	var reach := -29 if facing < 0 else 29
+	for step in 3:
+		for dy in [-14, 14]:
+			var level := _rotate_point(weapon.x + reach * step, weapon.y + dy, course_rotation)
+			var block = _active_block_at_level(level)
+			if block != null:
+				_damage_block(block, reach)
+
+
+## An active (solid, not vanished) block at a level-space pixel.
+func _active_block_at_level(level: Vector2):
+	var block = _main_block(Vector2i(_tile_index(level.x), _tile_index(level.y)))
+	if block == null or not _is_solid_block(block):
+		return null
+	return block
+
+
+## Flash Block.onDamage (wobble from the hit) and the block types' overrides.
+func _damage_block(block: Dictionary, force: float) -> void:
+	_start_block_bounce(block, clampf(force, -20, 20), 0)
 	match block.id:
 		B_BRICK:
 			_remove_block(block)
 		B_CRUMBLE:
 			_apply_crumble_force(block, 5)
 		B_MINE:
-			var effect := EXPLODE_EFFECT.instantiate()
-			effect.position = Vector2(block.coords * Settings.tile_size) \
-					+ Vector2(Settings.tile_size_half)
-			block.tml.add_child(effect)
-			_remove_block(block)
+			_explode_mine(block)
 		B_VANISH:
 			_activate_vanish(block)
 
