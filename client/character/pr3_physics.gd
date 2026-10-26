@@ -263,6 +263,7 @@ var cur_display := Vector2.ZERO
 var last_written_position := Vector2.ZERO
 var last_written_velocity := Vector2.ZERO
 var last_parent: Node
+var carry_motion_on_sync := false # keep the character's speed and facing on the next sync
 
 static var _vars_cache := {}
 
@@ -297,8 +298,9 @@ func physics_tick(delta: float) -> void:
 	_write_to_character()
 
 
-func invalidate() -> void:
+func invalidate(carry_motion: bool = false) -> void:
 	initialized = false
+	carry_motion_on_sync = carry_motion
 
 
 var grounded: bool:
@@ -362,12 +364,24 @@ func _sync_from_character() -> void:
 	if not initialized or character.get_parent() != last_parent:
 		safe_x = real_x
 		safe_y = real_y
+	if carry_motion_on_sync:
+		carry_motion_on_sync = false
+		_carry_motion_from_character()
 	initialized = true
 	last_parent = character.get_parent()
 	cur_display = _display_position()
 	prev_display = cur_display
 	last_written_position = character.position
 	last_written_velocity = character.velocity
+
+
+## Switching physics mode: keep the speed and facing the player already had.
+func _carry_motion_from_character() -> void:
+	var level := main_map.transform.basis_xform_inv(character.velocity) / (PR4_PER_PR3 * 1000.0)
+	var v := _rotate_point(level.x, level.y, rotation)
+	vel_x = v.x
+	vel_y = v.y
+	facing_right = character.movement.facing >= 0
 
 
 func _reset_motion_state() -> void:

@@ -45,8 +45,7 @@ func _detect_character_body_collisions() -> void:
 		return
 
 	var normal := collision.get_normal()
-	var rid := collision.get_collider_rid()
-	var coords: Vector2i = tile_map_layer.get_coords_for_body_rid(rid)
+	var coords: Vector2i = CoordinateUtils.collision_coords(tile_map_layer, collision)
 
 	_notify_collision(tile_map_layer, coords, normal)
 

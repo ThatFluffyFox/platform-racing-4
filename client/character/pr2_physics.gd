@@ -148,6 +148,7 @@ var cur_display := Vector2.ZERO
 var last_written_position := Vector2.ZERO
 var last_written_velocity := Vector2.ZERO
 var last_parent: Node
+var carry_motion_on_sync := false # keep the character's speed and facing on the next sync
 
 
 static func is_enabled() -> bool:
@@ -189,8 +190,9 @@ func physics_tick(delta: float) -> void:
 
 ## Called when PR4 physics took over for a tick (lightbreak), so the next PR2
 ## tick starts from wherever PR4 left the character.
-func invalidate() -> void:
+func invalidate(carry_motion: bool = false) -> void:
 	initialized = false
+	carry_motion_on_sync = carry_motion
 
 
 func is_charging_super_jump() -> bool:
@@ -249,12 +251,25 @@ func _sync_from_character() -> void:
 	elif character.get_parent() != last_parent:
 		last_safe_x = x
 		last_safe_y = y
+	if carry_motion_on_sync:
+		carry_motion_on_sync = false
+		_carry_motion_from_character()
 	initialized = true
 	last_parent = character.get_parent()
 	cur_display = _display_position()
 	prev_display = cur_display
 	last_written_position = character.position
 	last_written_velocity = character.velocity
+
+
+## Switching physics mode: keep the speed and facing the player already had.
+func _carry_motion_from_character() -> void:
+	var v := _vec_from_pr4(character.velocity) / VELOCITY_SCALE
+	vx = v.x
+	vy = v.y
+	_read_stats()
+	target_vel_x = clampf(vx, -max_vel_x, max_vel_x) # so running keeps its speed
+	facing = 1 if character.movement.facing >= 0 else -1
 
 
 func _reset_motion_state() -> void:

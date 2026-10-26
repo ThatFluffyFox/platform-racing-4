@@ -165,11 +165,11 @@ func set_physics_mode(mode: String) -> void:
 	if mode == physics_mode():
 		return
 	physics_override = mode
-	# The new mode picks up from wherever the player is now.
+	# The new mode picks up the player's position, rotation, speed and facing.
 	if pr2_physics:
-		pr2_physics.invalidate()
+		pr2_physics.invalidate(true)
 	if pr3_physics:
-		pr3_physics.invalidate()
+		pr3_physics.invalidate(true)
 
 
 func uses_pr2_physics() -> bool:

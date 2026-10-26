@@ -154,10 +154,11 @@ static func _run_classic_physics_test(main_instance: Main, mode: String):
 	GameConfig.clear_overrides()
 
 
-## Starts in PR3 physics and walks right through a PR2 switch block (43), then
-## a PR4 one (45).
+## Starts in PR3 physics and bumps a PR2 switch block (43) overhead, then a
+## PR4 one (45), then (in PR4 physics) a PR3 one (44). Each switch keeps the
+## way the player faces.
 static func _run_physics_switch_test(main_instance: Main):
-	var level := _test_room({"pr3_physics": true}, {54: 43, 56: 45})
+	var level := _test_room({"pr3_physics": true}, {32: 43, 36: 45, 31: 44})
 	var tester = await main_instance._set_scene(Main.TESTER, {"level": level})
 	var character: Character = tester.get_node("PlayerManager").get_character()
 	if not character or character.physics_mode() != "pr3":
@@ -165,16 +166,26 @@ static func _run_physics_switch_test(main_instance: Main):
 		main_instance.get_tree().quit(1)
 		return
 	await main_instance.get_tree().create_timer(1.5).timeout
-	var seen := []
-	Input.action_press("right")
-	for i in 60:
-		await main_instance.get_tree().create_timer(0.05).timeout
-		if seen.is_empty() or seen[-1] != character.physics_mode():
-			seen.push_back(character.physics_mode())
-	Input.action_release("right")
-	await main_instance.get_tree().create_timer(1.0).timeout
-	if seen != ["pr3", "pr2", "pr4"] or not character.is_grounded():
-		print("Physics switch test: modes seen ", seen, ", grounded ", character.is_grounded())
+	# Face left, then check every switch keeps it.
+	Input.action_press("left")
+	await main_instance.get_tree().create_timer(0.1).timeout
+	Input.action_release("left")
+	var seen := [character.physics_mode()]
+	var facing_kept := true
+	for column in [2, 6, 1]:
+		# Put the player under the block (walking there isn't what this tests).
+		character.position = Vector2((column + 0.5) * Settings.tile_size.x, character.position.y)
+		character.velocity = Vector2.ZERO
+		await main_instance.get_tree().create_timer(0.5).timeout
+		Input.action_press("jump")
+		await main_instance.get_tree().create_timer(0.6).timeout
+		Input.action_release("jump")
+		await main_instance.get_tree().create_timer(1.0).timeout
+		seen.push_back(character.physics_mode())
+		facing_kept = facing_kept and character.movement.facing == -1
+	if seen != ["pr3", "pr2", "pr4", "pr3"] or not character.is_grounded() or not facing_kept:
+		print("Physics switch test: modes seen ", seen, ", grounded ", character.is_grounded(),
+				", facing kept ", facing_kept, " at ", character.position)
 		main_instance.get_tree().quit(1)
 	else:
 		print("Physics switch test passed.")
