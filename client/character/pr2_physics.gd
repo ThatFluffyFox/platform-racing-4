@@ -1192,26 +1192,20 @@ func _block_with_open_space_below(block):
 	return block if _get_block_below(block) == null else null
 
 
-# PR2 passes level-frame tile positions here as if they were gravity-frame
-# pixels. Once the course is rotated, that points far outside any PR2 level
-# (PR2 levels sit at large positive coordinates), so PR2 always finds nothing.
-# PR4 levels sit around 0, where the same math can hit real blocks, so a
-# rotated course returns nothing directly, like PR2.
+# PR2 passes level-frame block positions here as if they were gravity-frame
+# pixels. Once the course is rotated that points far outside the level, which
+# PR2 levels leave empty -- unless a Flash mine was misplaced out there by the
+# rotate glitch, which is what lets players walk through the walls next to
+# where the mine should have been. Kept exactly as PR2 does it.
 func _get_block_left_of(block: Dictionary):
-	if course_rotation != 0:
-		return null
 	return _get_block_at_pixel(block.x * TILE - TILE, block.y * TILE)
 
 
 func _get_block_right_of(block: Dictionary):
-	if course_rotation != 0:
-		return null
 	return _get_block_at_pixel(block.x * TILE + TILE, block.y * TILE)
 
 
 func _get_block_below(block: Dictionary):
-	if course_rotation != 0:
-		return null
 	return _get_block_at_pixel(block.x * TILE, block.y * TILE + TILE)
 
 

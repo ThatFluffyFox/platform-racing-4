@@ -32,10 +32,11 @@ mine elsewhere (the "mine disappears" rotate glitch). The remake doesn't do
 this yet (its TODO lists it as an open bug).
 
 PR4 levels sit around (0, 0) while PR2 levels sit at large positive
-coordinates, so the port also rounds tile lookups down (PR2 truncates toward
-zero, which is the same for positive numbers) and treats PR2's "block next
-to this one" checks as empty on rotated courses, which is what they always
-find on real PR2 levels.
+coordinates, so the port rounds tile lookups down (PR2 truncates toward zero,
+which is the same for positive numbers). Everything else, including PR2's
+"block next to this one" checks on rotated courses (which make the mine
+rotate glitch's walk-through work), is exactly PR2's math. Build levels with
+"New PR2 level" in the editor to get PR2's coordinates.
 
 To step a single scenario in PR4 only:
 

@@ -44,9 +44,14 @@ static func run_tests(main_instance: Main):
 static func _run_game_test(main_instance: Main):
 	Game.pr2_level_id = "50815"
 	var game_scene = await main_instance._set_scene(Main.GAME)
-	await main_instance.get_tree().create_timer(2.0).timeout
 
+	# The level downloads first; give the player 2 seconds once it's spawned.
 	var player_manager = game_scene.get_node("PlayerManager")
+	for i in 100:
+		if player_manager.get_character():
+			break
+		await main_instance.get_tree().create_timer(0.1).timeout
+	await main_instance.get_tree().create_timer(2.0).timeout
 	var character = player_manager.get_character()
 	if character:
 		if not character.is_grounded():
@@ -62,9 +67,14 @@ static func _run_game_test(main_instance: Main):
 static func _run_items_test(main_instance: Main):
 	Game.pr2_level_id = "50815"
 	var game_scene = await main_instance._set_scene(Main.GAME)
-	await main_instance.get_tree().create_timer(2.0).timeout
 
+	# The level downloads first; give the player 2 seconds once it's spawned.
 	var player_manager = game_scene.get_node("PlayerManager")
+	for i in 100:
+		if player_manager.get_character():
+			break
+		await main_instance.get_tree().create_timer(0.1).timeout
+	await main_instance.get_tree().create_timer(2.0).timeout
 	var character = player_manager.get_character()
 	if not character:
 		print("Failed to get character instance.")
