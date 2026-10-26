@@ -29,10 +29,13 @@ class Pr2Reference {
 			new TilePosition(0, 0), new TilePosition(99, 99), blocks);
 		var c = new LocalPlayerController(level, new pr2.gameplay.BlockController(level));
 		c.resetPreRacePosition(s.x, s.y);
+		// Optional held item, given as a PR4 item id.
+		var pr4Items = [4 => 6, 5 => 1, 11 => 7, 12 => 5, 13 => 8, 14 => 4];
+		if (s.item != null) c.grantItemForDebug(pr4Items.get(s.item));
 		var inputs:Array<String> = s.inputs;
 		for (i in 0...inputs.length) {
 			var k = inputs[i];
-			c.step(new LocalPlayerInput(k.indexOf("L") >= 0, k.indexOf("R") >= 0, k.indexOf("J") >= 0, k.indexOf("D") >= 0, false, k.indexOf("H") >= 0));
+			c.step(new LocalPlayerInput(k.indexOf("L") >= 0, k.indexOf("R") >= 0, k.indexOf("J") >= 0, k.indexOf("D") >= 0, k.indexOf("I") >= 0, k.indexOf("H") >= 0));
 			Sys.println(i + " " + c.x + " " + c.y + " " + c.vx + " " + c.vy + " " + c.grounded + " " + c.crouching + " " + c.mode + " " + c.courseRotation);
 		}
 	}

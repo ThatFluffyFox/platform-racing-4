@@ -48,12 +48,13 @@ func _physics_process(delta: float) -> void:
 
 # tada, the item system, not all items are fully implemented at the moment.
 # it's also slightly unoptimized, i think.
-func set_item_id(item_id: int, p_character: Character) -> void:
+func set_item_id(new_item_id: int, p_character: Character) -> void:
 	character = p_character
+	item_id = new_item_id
 	if item:
 		remove_item()
 	item = null
-	match item_id:
+	match new_item_id:
 		0:
 			has_force = false
 			uses = GameConfig.get_value("uses_random_block")

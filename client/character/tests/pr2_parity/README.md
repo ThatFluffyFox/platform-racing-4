@@ -20,7 +20,9 @@ ground/crouch state, mode and course rotation must match.
 python3 compare.py mixed 1 200
 ```
 
-Pools: `mixed`, `rotate`, `hazard`, `movers`, `tall`. Each run prints the first
+Pools: `mixed`, `rotate`, `hazard`, `movers`, `tall`, `items` (laser gun,
+sword, super jump, jet pack, speed burst and teleport; `I` in the inputs
+holds the item key). Each run prints the first
 differing frame for any scenario that doesn't match.
 
 To step a single scenario in PR4 only:

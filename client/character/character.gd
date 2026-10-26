@@ -122,7 +122,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _pr2_physics_process(delta: float) -> void:
-	_process_item_forces(delta)
+	if not Pr2Physics.handles_item(item_manager.item_id) or not item_manager.item:
+		_process_item_forces(delta)
 	pr2_physics.physics_tick(delta)
 
 	# Gas tiles (lights, switches). PR2 physics handles water and safety nets.
@@ -166,8 +167,9 @@ func _process_item_forces(delta: float) -> void:
 
 
 func _process_items(delta: float) -> void:
-	# Use items
-	if not movement.hurt and Input.is_action_pressed("item"):
+	# Use items (in PR2 physics mode, PR2 items are used inside the PR2 step)
+	var pr2_item := uses_pr2_physics() and Pr2Physics.handles_item(item_manager.item_id)
+	if not movement.hurt and Input.is_action_pressed("item") and not pr2_item:
 		item_manager.use(delta)
 	
 	# Check item state

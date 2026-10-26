@@ -4,7 +4,7 @@ Builds random levels and key presses, runs them through both games, and
 reports the first frame where position, velocity or state differ.
 
 Usage: python3 compare.py [pool] [first_seed] [count]
-Pools: mixed, rotate, hazard, movers, tall. See README.md for setup.
+Pools: mixed, rotate, hazard, movers, tall, items. See README.md for setup.
 """
 import json, os, random, subprocess, sys, tempfile
 
@@ -21,6 +21,7 @@ POOLS = {
     "hazard": [1, 1, 10, 21, 25, 16],
     "movers": [1, 5, 18, 19, 24, 24],
     "tall": [1, 1, 1, 1, 5, 6, 7, 18, 19, 22, 23],
+    "items": [1, 1, 1, 5, 5, 10, 18, 19, 22],
 }
 
 
@@ -39,9 +40,11 @@ def make(seed, pool="mixed", frames=300):
         cells.pop((sx, yy), None)
     inputs = []
     while len(inputs) < frames:
-        keys = "".join(k for k in "LRJD" if r.random() < (0.45 if k in "LR" else 0.3))
+        letters = "LRJDI" if pool == "items" else "LRJD"
+        keys = "".join(k for k in letters if r.random() < (0.45 if k in "LR" else 0.3))
         inputs += [keys] * r.randint(1, 25)
-    return {"gravity": r.choice([1, 1, 0.5, 1.7]), "speed": r.randint(0, 100),
+    item = r.choice([4, 5, 5, 11, 12, 13, 14]) if pool == "items" else None
+    return {"item": item, "gravity": r.choice([1, 1, 0.5, 1.7]), "speed": r.randint(0, 100),
             "accel": r.randint(0, 100), "jump": r.randint(0, 100),
             "x": sx * 30 + 15, "y": sy * 30,
             "blocks": [[x, y, b] for (x, y), b in cells.items()],

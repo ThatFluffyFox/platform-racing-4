@@ -61,6 +61,8 @@ func _run_steps(character: Character, tiles: Tiles, scenario: Dictionary) -> voi
 	pr2.last_safe_y = pr2.y
 	pr2.standing_tile_x = Pr2Physics._tile_index(pr2.x)
 	pr2.standing_tile_y = Pr2Physics._tile_index(pr2.y)
+	if scenario.get("item") != null:
+		character.set_item(int(scenario.item))
 
 	var inputs: Array = scenario.inputs
 	for i in inputs.size():
@@ -70,6 +72,7 @@ func _run_steps(character: Character, tiles: Tiles, scenario: Dictionary) -> voi
 			"right": keys.contains("R"),
 			"jump": keys.contains("J"),
 			"down": keys.contains("D"),
+			"item": keys.contains("I"),
 		}
 		pr2.step()
 		print("%d %.12f %.12f %.12f %.12f %s %s %s %d" % [

@@ -30,6 +30,24 @@ const CRUMBLE_INITIAL_LIFE := 10
 const VANISH_FADE_FRAMES := 10
 const VANISH_REAPPEAR_FRAMES := 54
 const BOUNCE_BLOCK_MULTIPLIER := 1.1
+const LASER_RECOIL := 15.0
+const SWORD_LUNGE := 8.0
+const SUPER_JUMP_ITEM_SPEED := 25.0
+const TELEPORT_ITEM_DISTANCE := 120.0
+const SPEED_BURST_FRAMES := 135
+const JET_PACK_TOTAL_FUEL := 200
+const FAST_ITEM_RELOAD_FRAMES := 22
+const LASER_SHOT_SPEED := 29.0
+const LASER_SHOT_FRAMES := 100
+const SHOT_EFFECT_DEFAULT_SPEED := 5.0
+
+# PR4 item ids that use PR2's item rules in PR2 physics mode.
+const ITEM_JETPACK := 4
+const ITEM_LASER_GUN := 5
+const ITEM_SPEED_BURST := 11
+const ITEM_SUPER_JUMP := 12
+const ITEM_SWORD := 13
+const ITEM_TELEPORT := 14
 
 const MODE_LAND := "land"
 const MODE_WATER := "water"
@@ -91,6 +109,17 @@ var max_vel_x: float = 0
 var jump_velocity: float = 0
 var gravity: float = DEFAULT_GRAVITY
 
+# PR2 item state for the held item (see _use_held_item).
+var item_node: Node
+var item_id := -1
+var item_uses := 0
+var item_reload := 0
+var item_reload_frames := 0
+var item_available := false
+var jet_pack_fuel := 0
+var speed_burst_frames := 0
+var laser_shots: Array = [] # in-flight shots that damage the first block they hit
+
 # Per-block runtime state (crumble life, vanish timers, bump wobble).
 var block_states := {}
 
@@ -103,7 +132,7 @@ var sub_maps_refresh := 0
 var map_min := Vector2.ZERO
 var map_max := Vector2.ZERO
 var map_bounds_dirty := true
-var input := {"left": false, "right": false, "jump": false, "down": false}
+var input := {"left": false, "right": false, "jump": false, "down": false, "item": false}
 var step_accumulator: float = 0
 var initialized := false
 var prev_display := Vector2.ZERO
@@ -288,6 +317,7 @@ func _read_input() -> void:
 	input.right = Input.is_action_pressed("right")
 	input.jump = Input.is_action_pressed("jump")
 	input.down = Input.is_action_pressed("down")
+	input.item = Input.is_action_pressed("item")
 
 
 func _read_stats() -> void:
@@ -298,10 +328,9 @@ func _read_stats() -> void:
 	max_vel_x = 2 + speed_stat / 10.0
 	accel = 0.2 + accel_stat / 60.0
 	jump_velocity = 2 + jump_stat / 40.0
-	var boost: float = character.movement.speedburst_boost
-	if boost != 1.0:
-		accel *= boost
-		max_vel_x *= boost
+	if speed_burst_frames > 0:
+		accel *= 2
+		max_vel_x *= 2
 	gravity = DEFAULT_GRAVITY * float(GameConfig.get_value("pr2_gravity"))
 
 
@@ -334,11 +363,17 @@ func step() -> void:
 	if rotate_frames_remaining > 0:
 		_update_rotation()
 	hurt_frames_remaining -= 1
+	_update_laser_shots()
+	_sync_held_item()
+	if item_reload > 0:
+		item_reload -= 1
 	if input.right:
 		facing = 1
 	if input.left:
 		facing = -1
 	_sync_status_from_pr4()
+	if mode != MODE_HURT:
+		_use_held_item()
 
 	if mode == MODE_PAUSE:
 		pass
@@ -351,6 +386,7 @@ func step() -> void:
 	else:
 		_land_step()
 
+	_update_speed_burst()
 	_update_block_states()
 	_sync_status_to_pr4()
 
@@ -1192,6 +1228,174 @@ func _is_arrow(id: int) -> bool:
 
 func _is_teleport(id: int) -> bool:
 	return id >= B_TELEPORT_BLUE and id <= B_TELEPORT_YELLOW
+
+
+# ---------------------------------------------------------------------------
+# Items (PR2's ItemController)
+# ---------------------------------------------------------------------------
+
+## True for PR4 items whose physics follow PR2's rules in this mode.
+static func handles_item(id: int) -> bool:
+	return id in [ITEM_JETPACK, ITEM_LASER_GUN, ITEM_SPEED_BURST, ITEM_SUPER_JUMP,
+			ITEM_SWORD, ITEM_TELEPORT]
+
+
+## Sets up PR2 item state when the character picks up a new item.
+func _sync_held_item() -> void:
+	var manager = character.item_manager
+	var node = manager.item if manager else null
+	if node == item_node:
+		return
+	item_node = node
+	item_id = manager.item_id if node and handles_item(manager.item_id) else -1
+	item_available = false # PR2 items wait for the item key to be released once
+	item_reload = 0
+	item_reload_frames = 0
+	item_uses = 1
+	match item_id:
+		ITEM_LASER_GUN, ITEM_SWORD:
+			item_uses = 3
+			item_reload_frames = FAST_ITEM_RELOAD_FRAMES
+		ITEM_JETPACK:
+			jet_pack_fuel = JET_PACK_TOTAL_FUEL
+
+
+## PR2's Item.setSpace: fires on a fresh press once reloaded (jet pack: while held).
+func _use_held_item() -> void:
+	if item_id == -1:
+		return
+	if item_id == ITEM_JETPACK and input.item:
+		_use_jet_pack()
+		return
+	if not input.item:
+		item_available = true
+		return
+	if item_uses <= 0 or item_reload > 0 or not item_available:
+		return
+	match item_id:
+		ITEM_LASER_GUN:
+			vx += LASER_RECOIL if facing < 0 else -LASER_RECOIL
+			_item_visual("shoot")
+			_fire_laser_shot()
+			_consume_item_use()
+		ITEM_SWORD:
+			vx += -SWORD_LUNGE if facing < 0 else SWORD_LUNGE
+			_item_visual("slash")
+			_consume_item_use()
+		ITEM_SUPER_JUMP:
+			if crouching:
+				return
+			vy -= SUPER_JUMP_ITEM_SPEED
+			_play_sound(SUPER_JUMP_SOUND)
+			_consume_item_use()
+		ITEM_TELEPORT:
+			var dest_x := x + TELEPORT_ITEM_DISTANCE * facing
+			if _get_block_at_pixel(dest_x, y - 5) != null:
+				return
+			_set_player_x(dest_x)
+			_mark_discontinuity()
+			_consume_item_use()
+		ITEM_SPEED_BURST:
+			if speed_burst_frames > 0:
+				return
+			speed_burst_frames = SPEED_BURST_FRAMES
+			accel *= 2
+			max_vel_x *= 2
+			character.speed_particles.emitting = true
+
+
+## PR2's laser shot: checks right next to the player first, then flies at
+## 29px a frame for up to 100 frames.
+func _fire_laser_shot() -> void:
+	var shot_x := x + (-20.0 if facing < 0 else 20.0)
+	var shot_y := y - 25
+	var block = _get_block_at_pixel(shot_x, shot_y)
+	if block != null:
+		_damage_block_from_item(block)
+		return
+	laser_shots.push_back({
+		"x": shot_x, "y": shot_y,
+		"vx": -LASER_SHOT_SPEED if facing < 0 else LASER_SHOT_SPEED,
+		"frames": LASER_SHOT_FRAMES,
+	})
+
+
+func _update_laser_shots() -> void:
+	if laser_shots.is_empty():
+		return
+	var still_flying := []
+	for shot in laser_shots:
+		shot.x += shot.vx
+		shot.frames -= 1
+		var block = _get_block_at_pixel(shot.x, shot.y)
+		if block != null:
+			_damage_block_from_item(block)
+		elif shot.frames > 0:
+			still_flying.push_back(shot)
+	laser_shots = still_flying
+
+
+func _damage_block_from_item(block: Dictionary) -> void:
+	match block.id:
+		B_BRICK:
+			_remove_block(block)
+		B_CRUMBLE:
+			_apply_crumble_force(block, 5)
+		B_MINE:
+			var effect := EXPLODE_EFFECT.instantiate()
+			effect.position = Vector2(block.coords * Settings.tile_size) \
+					+ Vector2(Settings.tile_size_half)
+			block.tml.add_child(effect)
+			_remove_block(block)
+		B_VANISH:
+			_activate_vanish(block)
+
+
+func _use_jet_pack() -> void:
+	if jet_pack_fuel <= 0 or crouching:
+		return
+	vy -= 1.25 if vy > -5 else 0.5
+	jet_pack_fuel -= 1
+	if jet_pack_fuel <= 0:
+		_drop_item()
+
+
+func _consume_item_use() -> void:
+	item_uses -= 1
+	if item_uses <= 0:
+		_drop_item()
+	else:
+		item_reload = item_reload_frames
+
+
+## Speed burst runs out after 135 frames, and the item goes with it.
+func _update_speed_burst() -> void:
+	if speed_burst_frames <= 0:
+		return
+	speed_burst_frames -= 1
+	if speed_burst_frames <= 0:
+		character.speed_particles.emitting = false
+		if item_id == ITEM_SPEED_BURST:
+			_drop_item()
+
+
+func _drop_item() -> void:
+	item_id = -1
+	item_uses = 0
+	jet_pack_fuel = 0
+	if character.item_manager and character.item_manager.item:
+		character.item_manager.remove_item()
+	item_node = null
+
+
+## Plays the PR4 item's shot or slash effect without its PR4 physics.
+func _item_visual(effect: String) -> void:
+	if not is_instance_valid(item_node) or not Game.game:
+		return
+	if item_node.get("animtimer"):
+		item_node.animtimer.start()
+	if item_node.has_method(effect):
+		item_node.call(effect)
 
 
 # ---------------------------------------------------------------------------
