@@ -14,6 +14,8 @@ func encode(layers: Node2D, bg: Node2D) -> Dictionary:
 			"game_config_overrides": GameConfig.export_overrides()
 		}
 	}
+	if GameConfig.level_gravity != 1.0:
+		level.properties.gravity = GameConfig.level_gravity # kept from PR2 imports
 	for group_layer in layers.get_children():
 		if group_layer is Layer:
 			var tile_layer = {

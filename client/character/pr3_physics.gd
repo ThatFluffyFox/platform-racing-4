@@ -172,6 +172,8 @@ const BUMP_SOUND := preload("res://sounds/BumpSound.ogg")
 const JUMP_SOUND := preload("res://sounds/JumpSound.ogg")
 const SUPER_JUMP_SOUND := preload("res://sounds/SuperJumpSound.ogg")
 const EXPLODE_EFFECT := preload("res://tiles/mine/explode_effect.tscn")
+const MINE_SPAWN_EFFECT := preload("res://item_effects/portable_mine.tscn")
+const BLOCK_SPAWN_EFFECT := preload("res://item_effects/portable_block.tscn")
 
 # ActivePlayer state (PR3 names)
 var real_x: float = 0
@@ -357,7 +359,7 @@ func _sync_from_character() -> void:
 		target_rot = rotation
 		_update_multipliers()
 	# ActivePlayer.init: defaultGravity times the level's gravity
-	gravity = DEFAULT_GRAVITY * float(GameConfig.get_value("pr2_gravity"))
+	gravity = DEFAULT_GRAVITY * GameConfig.level_gravity
 	var p := _from_pr4(character.position)
 	real_x = p.x
 	real_y = p.y
@@ -382,6 +384,16 @@ func _carry_motion_from_character() -> void:
 	vel_x = v.x
 	vel_y = v.y
 	facing_right = character.movement.facing >= 0
+	# Keep the safe spot the last physics mode had.
+	var safe := _from_pr4(character.tile_interaction.last_safe_position)
+	safe_x = safe.x
+	safe_y = safe.y
+
+
+## The safe spot in PR4 space, for the next physics mode.
+func export_safe_spot() -> void:
+	if initialized and main_map:
+		character.tile_interaction.last_safe_position = _to_pr4(Vector2(safe_x, safe_y))
 
 
 func _reset_motion_state() -> void:
@@ -1672,7 +1684,13 @@ func _try_to_use_item() -> void:
 			var existing = _get_block(target.x, target.y)
 			if existing == null or not _is_active(existing):
 				var id := B_MINE if item_id == ITEM_PORTABLE_MINE else B_CRUMBLE
-				pending_blocks.push_back({"pos": target, "frames": PORTABLE_BLOCK_FRAMES, "id": id})
+				var tile := Vector2i(int(floor(target.x / BLOCK)), int(floor(target.y / BLOCK)))
+				var effect: Node2D = (MINE_SPAWN_EFFECT if id == B_MINE else BLOCK_SPAWN_EFFECT).instantiate()
+				effect.position = main_map.map_to_local(tile)
+				main_map.add_child(effect)
+				effect.get_node("AnimationTimer").stop() # PR3 timing places the block
+				pending_blocks.push_back({"pos": target, "frames": PORTABLE_BLOCK_FRAMES, "id": id,
+						"effect": effect})
 				_use_item()
 
 
@@ -1719,6 +1737,8 @@ func _item_frame(ms: float) -> void:
 		if pending.frames > 0:
 			still_pending.push_back(pending)
 			continue
+		if is_instance_valid(pending.get("effect")):
+			pending.effect.queue_free()
 		var tile := Vector2i(int(floor(pending.pos.x / BLOCK)), int(floor(pending.pos.y / BLOCK)))
 		block_states.erase(_state_key(main_map, tile))
 		main_map.set_cell(tile, 0, CoordinateUtils.to_atlas_coords(pending.id))

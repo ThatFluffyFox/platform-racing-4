@@ -22,7 +22,7 @@ func _ready() -> void:
 func _run_scenario(scenario: Dictionary) -> void:
 	GameConfig.clear_overrides()
 	GameConfig.override_values["pr2_physics"] = true
-	GameConfig.override_values["pr2_gravity"] = float(scenario.gravity)
+	GameConfig.level_gravity = float(scenario.gravity)
 
 	var tiles := Tiles.new()
 	tiles.init_defaults()

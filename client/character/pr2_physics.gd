@@ -48,6 +48,7 @@ const BOUNCE_MIN_GRAVITY_STEPS := 1.5
 # PR4 item ids that use PR2's item rules in PR2 physics mode.
 const ITEM_JETPACK := 4
 const ITEM_LASER_GUN := 5
+const ITEM_PORTABLE_BLOCK := 7
 const ITEM_PORTABLE_MINE := 8
 const ITEM_SPEED_BURST := 11
 const ITEM_SUPER_JUMP := 12
@@ -84,6 +85,7 @@ const JUMP_SOUND := preload("res://sounds/JumpSound.ogg")
 const SUPER_JUMP_SOUND := preload("res://sounds/SuperJumpSound.ogg")
 const EXPLODE_EFFECT := preload("res://tiles/mine/explode_effect.tscn")
 const MINE_SPAWN_EFFECT := preload("res://item_effects/portable_mine.tscn")
+const BLOCK_SPAWN_EFFECT := preload("res://item_effects/portable_block.tscn")
 
 # PR2 state, in PR2 pixels inside the gravity frame.
 var x: float = 0
@@ -270,6 +272,18 @@ func _carry_motion_from_character() -> void:
 	_read_stats()
 	target_vel_x = clampf(vx, -max_vel_x, max_vel_x) # so running keeps its speed
 	facing = 1 if character.movement.facing >= 0 else -1
+	# Keep the safe spot the last physics mode had.
+	var safe := _from_pr4(character.tile_interaction.last_safe_position)
+	last_safe_x = safe.x
+	last_safe_y = safe.y
+	standing_tile_x = _tile_index(safe.x)
+	standing_tile_y = _tile_index(safe.y)
+
+
+## The safe spot in PR4 space, for the next physics mode.
+func export_safe_spot() -> void:
+	if initialized and main_map:
+		character.tile_interaction.last_safe_position = _to_pr4(Vector2(last_safe_x, last_safe_y))
 
 
 func _reset_motion_state() -> void:
@@ -354,7 +368,7 @@ func _read_stats() -> void:
 	if speed_burst_frames > 0:
 		accel *= 2
 		max_vel_x *= 2
-	gravity = DEFAULT_GRAVITY * float(GameConfig.get_value("pr2_gravity"))
+	gravity = DEFAULT_GRAVITY * GameConfig.level_gravity
 
 
 # Gravity frame (PR2 px) <-> PR4 position in the character's parent space.
@@ -1351,7 +1365,8 @@ func _is_teleport(id: int) -> bool:
 
 ## True for PR4 items whose physics follow PR2's rules in this mode.
 static func handles_item(id: int) -> bool:
-	return id in [ITEM_JETPACK, ITEM_LASER_GUN, ITEM_PORTABLE_MINE, ITEM_SPEED_BURST,
+	return id in [ITEM_JETPACK, ITEM_LASER_GUN, ITEM_PORTABLE_BLOCK, ITEM_PORTABLE_MINE,
+			ITEM_SPEED_BURST,
 			ITEM_SUPER_JUMP, ITEM_SWORD, ITEM_TELEPORT]
 
 
@@ -1373,7 +1388,7 @@ func _sync_held_item() -> void:
 			item_reload_frames = FAST_ITEM_RELOAD_FRAMES
 		ITEM_JETPACK:
 			jet_pack_fuel = JET_PACK_TOTAL_FUEL
-		ITEM_PORTABLE_MINE:
+		ITEM_PORTABLE_MINE, ITEM_PORTABLE_BLOCK:
 			# PR4's placement preview points at PR4's tile, not PR2's.
 			var preview = node.get_node_or_null("VisualAid")
 			if preview:
@@ -1417,7 +1432,9 @@ func _use_held_item() -> void:
 			_mark_discontinuity()
 			_consume_item_use()
 		ITEM_PORTABLE_MINE:
-			_use_mine_item()
+			_use_mine_item(B_MINE)
+		ITEM_PORTABLE_BLOCK:
+			_use_mine_item(B_CRUMBLE) # placed the same way as PR2's mine
 		ITEM_SPEED_BURST:
 			if speed_burst_frames > 0:
 				return
@@ -1432,7 +1449,7 @@ func _use_held_item() -> void:
 ## appears 33 frames later, Flash converts it with the course rotation *at
 ## that moment*, so a rotation in between sends the mine somewhere else
 ## (the "mine disappears" rotate glitch).
-func _use_mine_item() -> void:
+func _use_mine_item(block_id: int) -> void:
 	var hand := Vector2(x + facing * MINE_HAND_OFFSET.x, y + MINE_HAND_OFFSET.y)
 	var probe := Vector2(_haxe_round(hand.x + 15), _haxe_round(hand.y + 10))
 	var level_probe := _rotate_to_level(probe.x, probe.y, course_rotation)
@@ -1443,12 +1460,13 @@ func _use_mine_item() -> void:
 	var seg_center := Vector2(_tile_index(probe.x), _tile_index(probe.y)) * TILE + Vector2(15, 15)
 	var level_center := _rotate_point(seg_center.x, seg_center.y, course_rotation)
 	var stored := _rotate_point(level_center.x, level_center.y, -course_rotation)
-	var effect := MINE_SPAWN_EFFECT.instantiate()
+	var effect: Node2D = (MINE_SPAWN_EFFECT if block_id == B_MINE else BLOCK_SPAWN_EFFECT).instantiate()
 	var tile := Vector2i(_tile_index(level_center.x), _tile_index(level_center.y))
 	effect.position = main_map.map_to_local(tile)
 	main_map.add_child(effect)
 	effect.get_node("AnimationTimer").stop() # PR2 timing places the block, not the effect
-	pending_mines.push_back({"spot": stored, "frames": MINE_APPEAR_FRAMES, "effect": effect})
+	pending_mines.push_back({"spot": stored, "frames": MINE_APPEAR_FRAMES, "effect": effect,
+			"id": block_id})
 	_consume_item_use()
 
 
@@ -1482,7 +1500,7 @@ func _place_mines(ready: Array) -> void:
 		if _mine_spot_taken(tile):
 			continue
 		block_states.erase(_state_key(main_map, tile))
-		main_map.set_cell(tile, 0, CoordinateUtils.to_atlas_coords(B_MINE))
+		main_map.set_cell(tile, 0, CoordinateUtils.to_atlas_coords(mine.id))
 		_grow_map_bounds(target)
 
 

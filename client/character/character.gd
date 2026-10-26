@@ -164,6 +164,9 @@ func physics_mode() -> String:
 func set_physics_mode(mode: String) -> void:
 	if mode == physics_mode():
 		return
+	var old = classic_physics()
+	if old:
+		old.export_safe_spot() # PR4 and the next mode use the same safe spot
 	physics_override = mode
 	# The new mode picks up the player's position, rotation, speed and facing.
 	if pr2_physics:

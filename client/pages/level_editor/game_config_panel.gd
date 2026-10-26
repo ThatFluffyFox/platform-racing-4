@@ -11,7 +11,6 @@ var check_box_nodes: Dictionary = {}
 var label_overrides: Dictionary = {
 	"pr2_physics": "PR2 physics",
 	"pr3_physics": "PR3 physics",
-	"pr2_gravity": "PR2/PR3 gravity",
 }
 
 
