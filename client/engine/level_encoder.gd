@@ -66,7 +66,13 @@ func encode_chunks(tile_map_layer: TileMapLayer) -> Array:
 func encode_lines(node: Node2D) -> Array:
 	var lines = []
 	
-	for line: Line2D in node.get_children():
+	for child in node.get_children():
+		if child is LineBatch:
+			lines.append_array(child.encode())
+			continue
+		if not child is Line2D:
+			continue
+		var line: Line2D = child
 		var pointObjects = []
 		for point in line.points:
 			pointObjects.push_back({"x": point.x, "y": point.y})
@@ -74,7 +80,7 @@ func encode_lines(node: Node2D) -> Array:
 			"x": line.position.x,
 			"y": line.position.y,
 			"points": pointObjects.slice(1, len(pointObjects) - 1), # the first point should always be 0,0, we can leave it out
-			"color": line.default_color,
+			"color": line.default_color.to_html(),
 			"thickness": line.width
 		}
 		if line.get_meta("erase", false):
@@ -96,5 +102,7 @@ func encode_usertext(node: Node2D) -> Array:
 			"height": usertextbox.get_node("UserText").scale.y,
 			"text_rotation": usertextbox.rotation
 		}
+		if usertextbox.text_color != Color.BLACK:
+			usertextboxobject.color = usertextbox.text_color.to_html()
 		usertextboxobjects.push_back(usertextboxobject)
 	return usertextboxobjects

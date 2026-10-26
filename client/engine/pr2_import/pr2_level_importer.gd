@@ -11,6 +11,12 @@ const UPSCALE_RATIO := 4.2666666667 # PR4 tile size / PR2 tile size (128 / 30)
 const HASH_LENGTH := 32
 const BLOCK_CHUNK_SIZE := 8
 const MODE_DRAW := "draw"
+# Flash PR2's TextObjectGraphic: Verdana 18, its text field at (2, 2) in the
+# object, plus the text field's own 2px gutter.
+const TEXT_FONT := "res://fonts/Verdana/Verdana.ttf"
+const TEXT_SIZE := 18
+const TEXT_OFFSET := Vector2(2 + 2, 2 + 2 * 1.00286865234375)
+const TEXT_SCALE_Y := 1.00286865234375
 
 const MUSIC := {
 	"1": "orbital-trance", "2": "code", "3": "paradise-on-e", "4": "crying-soul",
@@ -103,16 +109,19 @@ static func convert_level(text: String) -> Dictionary:
 
 	var block_chunks := _parse_blocks(sections.blocks)
 	var layers := []
+	# Each Flash art layer draws its lines, then its objects (Course.setSaveString:
+	# bg1 = draw1 + objects1 and so on). Text objects become PR4 text boxes.
+	var objects: Array = sections.art_layers
 	if art_layers.size() >= 6:
 		layers = [
-			_layer("Art 1", art_layers[3], 10, UPSCALE_RATIO),
+			_layer("Art 1", art_layers[3], 10, UPSCALE_RATIO, objects[0]),
 			{"name": "Blocks", "chunks": block_chunks, "lines": [], "depth": 10, "scale": 1},
-			_layer("Art 2", art_layers[4], 5, UPSCALE_RATIO),
-			_layer("Art 3", art_layers[5], 2, UPSCALE_RATIO),
+			_layer("Art 2", art_layers[4], 5, UPSCALE_RATIO, objects[1]),
+			_layer("Art 3", art_layers[5], 2, UPSCALE_RATIO, objects[2]),
 		]
 	if art_layers.size() >= 10:
-		layers.push_back(_layer("Art 0", art_layers[8], 10, UPSCALE_RATIO))
-		layers.push_back(_layer("Art 00", art_layers[9], 16, UPSCALE_RATIO))
+		layers.push_back(_layer("Art 0", art_layers[8], 10, UPSCALE_RATIO, objects[6]))
+		layers.push_back(_layer("Art 00", art_layers[9], 16, UPSCALE_RATIO, objects[7]))
 
 	return {
 		"layers": layers,
@@ -129,8 +138,58 @@ static func convert_level(text: String) -> Dictionary:
 	}
 
 
-static func _layer(name: String, lines: Array, depth: int, scale: float) -> Dictionary:
-	return {"name": name, "chunks": [], "lines": lines, "depth": depth, "scale": scale}
+static func _layer(name: String, lines: Array, depth: int, scale: float,
+		objects: Array = []) -> Dictionary:
+	return {"name": name, "chunks": [], "lines": lines, "depth": depth, "scale": scale,
+			"usertextboxobjects": _parse_texts(objects, depth, scale)}
+
+
+# ---------------------------------------------------------------------------
+# Text objects (Flash GamePage.decodeObjectString2 + TextObject)
+# ---------------------------------------------------------------------------
+
+## Text objects of one art layer as PR4 text boxes. Every object moves the
+## position (each is relative to the one before), text or not.
+static func _parse_texts(objects: Array, depth: int, art_scale: float) -> Array:
+	var texts := []
+	var x := 0
+	var y := 0
+	# PR4 scales text boxes with the layer's depth but lines with art_scale too
+	# (Layer.set_depth), so text is placed in the lines' space.
+	var depth_compat := 2.5 if depth == 2 else (20.0 if depth == 16 else float(depth))
+	var to_pr4 := art_scale / (depth_compat / 10.0)
+	for entry in objects:
+		if entry == "":
+			continue
+		var values: PackedStringArray = entry.split(";")
+		x += values[0].to_int()
+		y += values[1].to_int() if values.size() > 1 else 0
+		if values.size() < 7 or values[2] != "t":
+			continue
+		var scale_x := values[5].to_float() / 100.0
+		var scale_y := values[6].to_float() / 100.0
+		var color := values[4].to_int() & 0xFFFFFF
+		var origin := Vector2(x, y) + TEXT_OFFSET * Vector2(scale_x, scale_y)
+		texts.push_back({
+			"x": origin.x * to_pr4,
+			"y": origin.y * to_pr4,
+			"usertext": _parse_text(values[3]),
+			"font": TEXT_FONT,
+			"font_size": TEXT_SIZE,
+			"width": scale_x * to_pr4,
+			"height": scale_y * TEXT_SCALE_Y * to_pr4,
+			"text_rotation": 0,
+			"color": Color.hex((color << 8) | 0xFF).to_html(false),
+		})
+	return texts
+
+
+## Flash TextObject.parseText
+static func _parse_text(text: String) -> String:
+	for pair in [["#96", "`"], ["#38", "&"], ["#44", ","], ["#59", ";"], ["#43", "+"],
+			["#45", "-"], ["#35", "#"]]:
+		text = text.replace(pair[0], pair[1])
+	return text
 
 
 ## Splits a level file into its fields. The last 32 characters are a hash.
