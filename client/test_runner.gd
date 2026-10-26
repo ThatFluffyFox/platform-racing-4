@@ -18,7 +18,8 @@ static func run_tests(main_instance: Main):
 
 	if "all" in tests_to_run:
 		# "user_settings" is flaky, skip for now
-		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics"]
+		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics", "pr3_physics",
+				"physics_switch"]
 
 	for test in tests_to_run:
 		match test:
@@ -36,6 +37,10 @@ static func run_tests(main_instance: Main):
 				await _run_items_test(main_instance)
 			"pr2_physics":
 				await _run_pr2_physics_test(main_instance)
+			"pr3_physics":
+				await _run_pr3_physics_test(main_instance)
+			"physics_switch":
+				await _run_physics_switch_test(main_instance)
 
 	main_instance.get_tree().quit()
 	return true
@@ -89,7 +94,15 @@ static func _run_items_test(main_instance: Main):
 
 
 static func _run_pr2_physics_test(main_instance: Main):
-	# A 10x10 room: start block at (2, 5), floor on row 6, walls on both sides.
+	await _run_classic_physics_test(main_instance, "pr2")
+
+
+static func _run_pr3_physics_test(main_instance: Main):
+	await _run_classic_physics_test(main_instance, "pr3")
+
+
+## A 10x10 room: start block at (2, 5), floor on row 6, walls on both sides.
+static func _test_room(overrides: Dictionary, extra_blocks: Dictionary = {}) -> Dictionary:
 	var data := []
 	data.resize(100)
 	data.fill(0)
@@ -99,16 +112,22 @@ static func _run_pr2_physics_test(main_instance: Main):
 		data[y * 10] = 1
 		data[y * 10 + 9] = 1
 	data[52] = 12
-	var level := {
+	for index in extra_blocks:
+		data[index] = extra_blocks[index]
+	return {
 		"layers": [{"name": "Layer 1", "depth": 10, "rotation": 0, "chunks": [
 			{"x": 0, "y": 0, "width": 10, "height": 10, "data": data}]}],
-		"properties": {"game_config_overrides": {"pr2_physics": true}},
+		"properties": {"game_config_overrides": overrides},
 	}
 
+
+static func _run_classic_physics_test(main_instance: Main, mode: String):
+	var label := mode.to_upper() + " physics test"
+	var level := _test_room({mode + "_physics": true})
 	var tester = await main_instance._set_scene(Main.TESTER, {"level": level})
 	var character: Character = tester.get_node("PlayerManager").get_character()
-	if not character or not character.uses_pr2_physics():
-		print("PR2 physics test: level did not turn on PR2 physics.")
+	if not character or character.physics_mode() != mode or not character.classic_physics():
+		print(label, ": level did not turn on ", mode, " physics.")
 		main_instance.get_tree().quit(1)
 		return
 
@@ -125,13 +144,40 @@ static func _run_pr2_physics_test(main_instance: Main):
 	await main_instance.get_tree().create_timer(2.0).timeout
 
 	if not landed or not character.is_grounded():
-		print("PR2 physics test: character is not standing. Position: ", character.position)
+		print(label, ": character is not standing. Position: ", character.position)
 		main_instance.get_tree().quit(1)
 	elif character.position.distance_to(start_position) < 1.0:
-		print("PR2 physics test: character did not move.")
+		print(label, ": character did not move.")
 		main_instance.get_tree().quit(1)
 	else:
-		print("PR2 physics test passed.")
+		print(label, " passed.")
+	GameConfig.clear_overrides()
+
+
+## Starts in PR3 physics and walks right through a PR2 switch block (43), then
+## a PR4 one (45).
+static func _run_physics_switch_test(main_instance: Main):
+	var level := _test_room({"pr3_physics": true}, {54: 43, 56: 45})
+	var tester = await main_instance._set_scene(Main.TESTER, {"level": level})
+	var character: Character = tester.get_node("PlayerManager").get_character()
+	if not character or character.physics_mode() != "pr3":
+		print("Physics switch test: level should start in PR3 physics.")
+		main_instance.get_tree().quit(1)
+		return
+	await main_instance.get_tree().create_timer(1.5).timeout
+	var seen := []
+	Input.action_press("right")
+	for i in 60:
+		await main_instance.get_tree().create_timer(0.05).timeout
+		if seen.is_empty() or seen[-1] != character.physics_mode():
+			seen.push_back(character.physics_mode())
+	Input.action_release("right")
+	await main_instance.get_tree().create_timer(1.0).timeout
+	if seen != ["pr3", "pr2", "pr4"] or not character.is_grounded():
+		print("Physics switch test: modes seen ", seen, ", grounded ", character.is_grounded())
+		main_instance.get_tree().quit(1)
+	else:
+		print("Physics switch test passed.")
 	GameConfig.clear_overrides()
 
 

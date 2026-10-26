@@ -10,7 +10,8 @@ var line_edit_nodes: Dictionary = {}
 var check_box_nodes: Dictionary = {}
 var label_overrides: Dictionary = {
 	"pr2_physics": "PR2 physics",
-	"pr2_gravity": "PR2 gravity",
+	"pr3_physics": "PR3 physics",
+	"pr2_gravity": "PR2/PR3 gravity",
 }
 
 

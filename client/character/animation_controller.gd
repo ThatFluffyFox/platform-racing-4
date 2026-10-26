@@ -32,12 +32,12 @@ func process(character: Character, movement: MovementController, super_jump: Sup
 	else:
 		display.set_speed_scale(1)
 	
-	var pr2_charging: bool = character.uses_pr2_physics() \
-			and character.pr2_physics.is_charging_super_jump()
-	var charging: bool = super_jump.is_locking() or pr2_charging
+	var classic = character.classic_physics()
+	var classic_charging: bool = classic != null and classic.is_charging_super_jump()
+	var charging: bool = super_jump.is_locking() or classic_charging
 	var charge: float = super_jump.charge_precentage()
-	if pr2_charging:
-		charge = character.pr2_physics.super_jump_charge()
+	if classic_charging:
+		charge = classic.super_jump_charge()
 	
 	# On ground
 	if !movement.hurt and character.is_grounded():

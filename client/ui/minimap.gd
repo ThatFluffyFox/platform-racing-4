@@ -31,6 +31,9 @@ func _create_minimap_layer(layer):
 	tile_map_layer_mini.name = layer.name
 	
 	tile_map_layer_mini.tile_set = layer.tile_map_layer.tile_set
+	# The tile set has collision; without this the minimap's copy of the level
+	# is a solid, invisible level in world space that players bump into.
+	tile_map_layer_mini.collision_enabled = false
 	
 	var used_cells = layer.tile_map_layer.get_used_cells()
 	for cell in used_cells:

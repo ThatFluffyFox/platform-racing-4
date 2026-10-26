@@ -39,6 +39,8 @@ var movement: MovementController
 var animation: AnimationController
 var tile_interaction: TileInteractionController
 var pr2_physics: Pr2Physics
+var pr3_physics: Pr3Physics
+var physics_override := "" # set by physics switch blocks; "" = the level's choice
 var control_vector: Vector2
 
 
@@ -50,6 +52,7 @@ func _ready() -> void:
 	movement = MovementController.new(ice)
 	animation = AnimationController.new(display, sjaura)
 	pr2_physics = Pr2Physics.new(self)
+	pr3_physics = Pr3Physics.new(self)
 	
 
 func init(tiles_node: Tiles) -> void:
@@ -68,12 +71,13 @@ func _physics_process(delta: float) -> void:
 	low_area.scale = movement.size
 	high_area.scale = movement.size
 	
-	# PR2 physics mode, unless a lightbreak needs PR4 movement this tick
-	if uses_pr2_physics():
+	# PR2/PR3 physics mode, unless a lightbreak needs PR4 movement this tick
+	var classic = classic_physics()
+	if classic:
 		if not lightbreak.is_active():
-			_pr2_physics_process(delta)
+			_classic_physics_process(classic, delta)
 			return
-		pr2_physics.invalidate()
+		classic.invalidate()
 	
 	# Process gravity
 	gravity.run(self, delta)
@@ -121,12 +125,13 @@ func _physics_process(delta: float) -> void:
 	tile_interaction.check_out_of_bounds(self)
 
 
-func _pr2_physics_process(delta: float) -> void:
-	if not Pr2Physics.handles_item(item_manager.item_id) or not item_manager.item:
+## Runs a tick of PR2 or PR3 physics (the "classic" modes).
+func _classic_physics_process(classic, delta: float) -> void:
+	if not classic.handles_item(item_manager.item_id) or not item_manager.item:
 		_process_item_forces(delta)
-	pr2_physics.physics_tick(delta)
+	classic.physics_tick(delta)
 
-	# Gas tiles (lights, switches). PR2 physics handles water and safety nets.
+	# Gas tiles (lights, switches). PR2/PR3 physics handle water and safety nets.
 	_interact_with_gas_tiles()
 
 	control_vector = Input.get_vector("left", "right", "up", "down")
@@ -144,14 +149,51 @@ func _interact_with_gas_tiles() -> void:
 		tiles.on("area", tile.block_id, self, tile.tile_map_layer, tile.coords)
 
 
+## "pr2", "pr3" or "pr4": the level's choice, unless a switch block changed it.
+func physics_mode() -> String:
+	if physics_override != "":
+		return physics_override
+	if GameConfig.get_value("pr3_physics"):
+		return "pr3"
+	if GameConfig.get_value("pr2_physics"):
+		return "pr2"
+	return "pr4"
+
+
+## Called by the PR2/PR3/PR4 physics switch blocks.
+func set_physics_mode(mode: String) -> void:
+	if mode == physics_mode():
+		return
+	physics_override = mode
+	# The new mode picks up from wherever the player is now.
+	if pr2_physics:
+		pr2_physics.invalidate()
+	if pr3_physics:
+		pr3_physics.invalidate()
+
+
 func uses_pr2_physics() -> bool:
-	return pr2_physics != null and Pr2Physics.is_enabled()
+	return pr2_physics != null and physics_mode() == "pr2"
 
 
-## On the ground, for either physics mode.
+func uses_pr3_physics() -> bool:
+	return pr3_physics != null and physics_mode() == "pr3"
+
+
+## The PR2 or PR3 physics object in use, or null for PR4 physics.
+func classic_physics():
+	if uses_pr2_physics():
+		return pr2_physics
+	if uses_pr3_physics():
+		return pr3_physics
+	return null
+
+
+## On the ground, for any physics mode.
 func is_grounded() -> bool:
-	if uses_pr2_physics() and not lightbreak.is_active():
-		return pr2_physics.grounded
+	var classic = classic_physics()
+	if classic and not lightbreak.is_active():
+		return classic.grounded
 	return is_on_floor()
 
 
@@ -167,9 +209,10 @@ func _process_item_forces(delta: float) -> void:
 
 
 func _process_items(delta: float) -> void:
-	# Use items (in PR2 physics mode, PR2 items are used inside the PR2 step)
-	var pr2_item := uses_pr2_physics() and Pr2Physics.handles_item(item_manager.item_id)
-	if not movement.hurt and Input.is_action_pressed("item") and not pr2_item:
+	# Use items (in PR2/PR3 physics mode, their items are used inside their step)
+	var classic = classic_physics()
+	var classic_item: bool = classic != null and classic.handles_item(item_manager.item_id)
+	if not movement.hurt and Input.is_action_pressed("item") and not classic_item:
 		item_manager.use(delta)
 	
 	# Check item state
