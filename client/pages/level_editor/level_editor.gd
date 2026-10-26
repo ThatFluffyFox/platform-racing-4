@@ -33,6 +33,7 @@ var default_level: Dictionary = {
 @onready var game_config_panel = $UI/GameConfigPanel
 @onready var import_pr2 = $UI/ImportPR2
 @onready var pr2_import_panel = $UI/Pr2ImportPanel
+@onready var new_level_panel = $UI/NewLevelPanel
 
 @onready var cursor = $UI/Cursor
 @onready var penciler: Node2D = $Penciler
@@ -61,6 +62,7 @@ func _ready():
 	clear.connect("pressed", _on_clear_pressed)
 	import_pr2.connect("pressed", _on_import_pr2_pressed)
 	pr2_import_panel.level_imported.connect(_on_pr2_level_imported)
+	new_level_panel.level_chosen.connect(_on_new_level_chosen)
 	load_panel.connect("level_load", _on_level_load)
 	explore_panel.connect("explore_load", _on_explore_load)
 	game_client.connect("request_editor_load", _on_request_editor_load)
@@ -136,6 +138,7 @@ func _on_test_pressed():
 
 
 func _on_import_pr2_pressed():
+	new_level_panel.close()
 	explore_panel.close()
 	save_panel.close()
 	load_panel.close()
@@ -180,7 +183,19 @@ func _on_clear_pressed():
 	save_panel.close()
 	load_panel.close()
 	explore_panel.close()
-	confirm_delete_panel.initialize(self, "clear")
+	pr2_import_panel.close()
+	new_level_panel.initialize()
+
+
+func _on_new_level_chosen(level: Dictionary):
+	FileManager.set_current_level_name("")
+	level_manager.clear()
+	LevelEditor.current_level = level
+	await get_tree().create_timer(0.1).timeout
+	level_manager.decode_level(level, true)
+	level_manager.layers.init(level_manager.tiles)
+	layer_panel_node.render()
+	_move_camera_to_start(level)
 
 
 func _on_level_load(level_name = ""):

@@ -780,11 +780,8 @@ func _hit_mine(block: Dictionary) -> void:
 	if _is_block_removed(block):
 		return
 	var center: Vector2 = Vector2(block.x, block.y) * TILE + Vector2(TILE / 2, TILE / 2)
-	# PR2 compares the unrotated mine position with the rotated player position,
-	# which on a rotated course gives a direction that depends on where the
-	# level sits. Rotating the mine into the player's frame keeps the blast
-	# pointing away from the mine; unrotated courses are unchanged.
-	center = _rotate_exact(center, -course_rotation)
+	# Like PR2, this compares the unrotated mine position with the rotated player
+	# position, so on a rotated course the push depends on where the level sits.
 	var angle := atan2((y - STANDING_HEIGHT / 2) - center.y, x - center.x)
 	var invincible: bool = character.invincibility.is_active()
 	if not invincible:

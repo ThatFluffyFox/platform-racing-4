@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://gotxkw71bwdq"]
+[gd_scene load_steps=26 format=3 uid="uid://gotxkw71bwdq"]
 
 [ext_resource type="Script" uid="uid://dcgenyyaoaf2q" path="res://pages/level_editor/level_editor.gd" id="1_8rp7f"]
 [ext_resource type="PackedScene" uid="uid://b37txmrlmt0ae" path="res://engine/editor_camera.tscn" id="2_bfjim"]
@@ -25,6 +25,8 @@
 [ext_resource type="PackedScene" uid="uid://b5w5c5j5q5y5r" path="res://pages/level_editor/game_config_panel.tscn" id="24_abcde"]
 
 [ext_resource type="Script" path="res://pages/level_editor/pr2_import_panel.gd" id="pr2_import_panel"]
+
+[ext_resource type="Script" path="res://pages/level_editor/new_level_panel.gd" id="new_level_panel"]
 
 [node name="LevelEditor" type="Node2D"]
 script = ExtResource("1_8rp7f")
@@ -183,6 +185,21 @@ offset_bottom = 90.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("pr2_import_panel")
+
+[node name="NewLevelPanel" type="PanelContainer" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -330.0
+offset_top = -80.0
+offset_right = 330.0
+offset_bottom = 80.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("new_level_panel")
 
 [node name="Back" type="Button" parent="UI"]
 anchors_preset = -1
