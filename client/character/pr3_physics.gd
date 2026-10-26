@@ -1407,8 +1407,10 @@ func _dull_out(block: Dictionary) -> void:
 	if _is_removed(block):
 		return
 	var alt := tml.get_cell_alternative_tile(block.coords)
-	if alt == Tile.VISIBLE_ALT_ID:
-		tml.set_cell(block.coords, 0, tml.get_cell_atlas_coords(block.coords), Tile.DEACTIVATED_ALT_ID)
+	if alt == Tile.VISIBLE_ALT_ID or alt == Tile.INVISIBLE_ALT_ID: # hidden while it bumps
+		var dull := Tile.DEACTIVATED_ALT_ID if alt == Tile.VISIBLE_ALT_ID \
+				else Tile.INVISIBLE_DEACTIVATED_ALT_ID
+		tml.set_cell(block.coords, 0, tml.get_cell_atlas_coords(block.coords), dull)
 
 
 func _un_dull_out(state: Dictionary) -> void:

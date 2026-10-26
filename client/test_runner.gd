@@ -19,7 +19,7 @@ static func run_tests(main_instance: Main):
 	if "all" in tests_to_run:
 		# "user_settings" is flaky, skip for now
 		tests_to_run = ["game", "editor", "tester", "items", "pr2_physics", "pr3_physics",
-				"physics_switch"]
+				"physics_switch", "item_block"]
 
 	for test in tests_to_run:
 		match test:
@@ -41,6 +41,8 @@ static func run_tests(main_instance: Main):
 				await _run_pr3_physics_test(main_instance)
 			"physics_switch":
 				await _run_physics_switch_test(main_instance)
+			"item_block":
+				await _run_item_block_test(main_instance)
 
 	main_instance.get_tree().quit()
 	return true
@@ -190,6 +192,35 @@ static func _run_physics_switch_test(main_instance: Main):
 	else:
 		print("Physics switch test passed.")
 	GameConfig.clear_overrides()
+
+
+## Bumps a single-use item block twice in each physics mode: only the first
+## bump may give an item.
+static func _run_item_block_test(main_instance: Main):
+	var failures := []
+	for mode in ["pr4", "pr2", "pr3"]:
+		var overrides := {} if mode == "pr4" else {mode + "_physics": true}
+		var level := _test_room(overrides, {32: 11})
+		var tester = await main_instance._set_scene(Main.TESTER, {"level": level})
+		var character: Character = tester.get_node("PlayerManager").get_character()
+		await main_instance.get_tree().create_timer(1.0).timeout
+		var got := []
+		for bump in 2:
+			Input.action_press("jump")
+			await main_instance.get_tree().create_timer(0.6).timeout
+			Input.action_release("jump")
+			await main_instance.get_tree().create_timer(1.2).timeout
+			got.push_back(character.item_manager.item != null)
+			if character.item_manager.item:
+				character.item_manager.remove_item()
+		if got != [true, false]:
+			failures.push_back(mode + " " + str(got))
+	GameConfig.clear_overrides()
+	if failures.is_empty():
+		print("Item block test passed.")
+	else:
+		print("Item block test: items from bump 1 and 2: ", failures)
+		main_instance.get_tree().quit(1)
 
 
 static func _run_editor_test(main_instance: Main):
