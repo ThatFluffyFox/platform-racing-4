@@ -5,6 +5,9 @@ static var editor_cursors: Node
 static var current_level: Dictionary
 static var current_level_description: String
 static var level_editor: Node
+# Where the editor camera was when leaving for Test/Back, restored on return.
+static var camera_position = null
+static var camera_zoom := 0.5
 
 var default_level: Dictionary = {
 	"layers": [{
@@ -83,19 +86,25 @@ func _ready():
 	penciler.init(level_manager.layers, bg, editor_events, layer_panel)
 	cursor.init(editor_menu, level_manager.layers)
 	
+	var loaded_level: Dictionary = default_level
 	if LevelEditor.current_level:
-		level_manager.decode_level(LevelEditor.current_level, true)
+		loaded_level = LevelEditor.current_level
 	else:
 		var saved_level = FileManager.load_from_file()
 		if saved_level:
-			level_manager.decode_level(saved_level, true)
-		else:
-			level_manager.decode_level(default_level, true)
+			loaded_level = saved_level
+	level_manager.decode_level(loaded_level, true)
 			
 	layer_panel_node.init(level_manager.layers)
 	
-	editor_camera.target_zoom = 0.5
-	editor_camera.change_camera_zoom(0.5)
+	# Come back to where the camera was (PR2 levels sit far from 0, 0)
+	if LevelEditor.camera_position != null:
+		editor_camera.position = LevelEditor.camera_position
+		editor_camera.reset_smoothing()
+	else:
+		_move_camera_to_start(loaded_level)
+	editor_camera.target_zoom = LevelEditor.camera_zoom
+	editor_camera.change_camera_zoom(LevelEditor.camera_zoom)
 	
 	# Connect control events for camera zoom changes
 	$UI/EditorMenu.control_event.connect(_on_control_event)
@@ -103,7 +112,13 @@ func _ready():
 	Jukebox.end_music = true
 
 
+func _remember_camera():
+	LevelEditor.camera_position = editor_camera.position
+	LevelEditor.camera_zoom = editor_camera.target_zoom
+
+
 func _on_back_pressed():
+	_remember_camera()
 	LevelEditor.current_level = level_manager.encode_level()
 	FileManager.save_to_file(LevelEditor.current_level)
 	await Main.set_scene(Main.TITLE)
@@ -132,6 +147,7 @@ func _on_save_pressed():
 
 
 func _on_test_pressed():
+	_remember_camera()
 	LevelEditor.current_level = level_manager.encode_level()
 	FileManager.save_to_file(LevelEditor.current_level)
 	Main.set_scene(Main.TESTER, { "level": LevelEditor.current_level })
@@ -210,6 +226,7 @@ func _on_level_load(level_name = ""):
 	await get_tree().create_timer(0.1).timeout
 	level_manager.decode_level(selected_level, true)
 	level_manager.layers.init(level_manager.tiles)
+	_move_camera_to_start(selected_level)
 
 
 func _on_request_editor_load():
