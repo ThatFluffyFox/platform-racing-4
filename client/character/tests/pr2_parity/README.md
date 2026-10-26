@@ -25,6 +25,12 @@ sword, super jump, jet pack, speed burst and teleport; `I` in the inputs
 holds the item key). Each run prints the first
 differing frame for any scenario that doesn't match.
 
+Known, deliberate difference (counted separately): mines follow Flash PR2
+rather than the HTML remake. Flash converts a pending mine's spot with the
+course rotation at the moment it appears, so a rotation in between sends the
+mine elsewhere (the "mine disappears" rotate glitch). The remake doesn't do
+this yet (its TODO lists it as an open bug).
+
 PR4 levels sit around (0, 0) while PR2 levels sit at large positive
 coordinates, so the port also rounds tile lookups down (PR2 truncates toward
 zero, which is the same for positive numbers) and treats PR2's "block next

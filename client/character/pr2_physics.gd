@@ -1331,20 +1331,35 @@ func _use_held_item() -> void:
 			character.speed_particles.emitting = true
 
 
-## PR2's mine item: picks the tile at an offset from the weapon hand and, if
-## it's empty, a mine appears there 33 frames later.
+## Flash PR2's mine item (items/Mine.as + effects/MineAppear.as). The spot is
+## worked out in the player's rotated frame and stored there. When the mine
+## appears 33 frames later, Flash converts it with the course rotation *at
+## that moment*, so a rotation in between sends the mine somewhere else
+## (the "mine disappears" rotate glitch).
 func _use_mine_item() -> void:
 	var hand := Vector2(x + facing * MINE_HAND_OFFSET.x, y + MINE_HAND_OFFSET.y)
-	var probe := _rotate_point(_haxe_round(hand.x + 15), _haxe_round(hand.y + 10), course_rotation)
-	var tile := Vector2i(_tile_index(probe.x), _tile_index(probe.y))
-	if _cell_id(main_map, tile) != 0:
+	var probe := Vector2(_haxe_round(hand.x + 15), _haxe_round(hand.y + 10))
+	var level_probe := _rotate_to_level(probe.x, probe.y, course_rotation)
+	if _mine_spot_taken(Vector2i(_tile_index(level_probe.x), _tile_index(level_probe.y))):
 		return
+	# Flash: getSegFromPos on the unrotated probe, centre it, rotate it into the
+	# level, then MineAppear rotates it straight back for its own position.
+	var seg_center := Vector2(_tile_index(probe.x), _tile_index(probe.y)) * TILE + Vector2(15, 15)
+	var level_center := _rotate_point(seg_center.x, seg_center.y, course_rotation)
+	var stored := _rotate_point(level_center.x, level_center.y, -course_rotation)
 	var effect := MINE_SPAWN_EFFECT.instantiate()
+	var tile := Vector2i(_tile_index(level_center.x), _tile_index(level_center.y))
 	effect.position = main_map.map_to_local(tile)
 	main_map.add_child(effect)
 	effect.get_node("AnimationTimer").stop() # PR2 timing places the block, not the effect
-	pending_mines.push_back({"tile": tile, "frames": MINE_APPEAR_FRAMES, "effect": effect})
+	pending_mines.push_back({"spot": stored, "frames": MINE_APPEAR_FRAMES, "effect": effect})
 	_consume_item_use()
+
+
+## Flash's map only holds placed blocks; start blocks and egg spawners aren't in it.
+func _mine_spot_taken(tile: Vector2i) -> bool:
+	var id := _cell_id(main_map, tile)
+	return id != 0 and id != 12 and id != 31
 
 
 ## Counts down pending mines; returns the ones due this frame.
@@ -1365,10 +1380,29 @@ func _place_mines(ready: Array) -> void:
 	for mine in ready:
 		if is_instance_valid(mine.effect):
 			mine.effect.queue_free()
-		if _cell_id(main_map, mine.tile) != 0:
-			continue # something else got there first
-		block_states.erase(_state_key(main_map, mine.tile))
-		main_map.set_cell(mine.tile, 0, CoordinateUtils.to_atlas_coords(B_MINE))
+		# Converted with the rotation the course has now, like Flash.
+		var target := _rotate_point(mine.spot.x, mine.spot.y, course_rotation)
+		var tile := Vector2i(_tile_index(target.x), _tile_index(target.y))
+		if _mine_spot_taken(tile):
+			continue
+		block_states.erase(_state_key(main_map, tile))
+		main_map.set_cell(tile, 0, CoordinateUtils.to_atlas_coords(B_MINE))
+		_grow_map_bounds(target)
+
+
+## Flash's Map.attachObject stretches the level edges to every placed block
+## (with its else-if quirk), which moves the fall-off reset line.
+func _grow_map_bounds(pos: Vector2) -> void:
+	if map_bounds_dirty:
+		_update_map_bounds()
+	if pos.y > map_max.y:
+		map_max.y = pos.y
+	elif pos.y < map_min.y:
+		map_min.y = pos.y
+	if pos.x > map_max.x:
+		map_max.x = pos.x
+	elif pos.x < map_min.x:
+		map_min.x = pos.x
 
 
 ## PR2's laser shot: checks right next to the player first, then flies at

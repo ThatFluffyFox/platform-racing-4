@@ -96,18 +96,25 @@ def main(pool, start, count):
     pr2 = run(haxe_command(paths), PR2_CLIENT)
     pr4 = run(godot_command(paths), CLIENT)
     bad = 0
+    known = 0
     for path in paths:
         a_rows, b_rows = pr2.get(path, []), pr4.get(path, [])
         if not a_rows or len(a_rows) != len(b_rows):
             print(f"{path}: frame counts {len(a_rows)} (PR2) vs {len(b_rows)} (PR4)")
             bad += 1
             continue
-        for a, b in zip(a_rows, b_rows):
+        with open(path) as f:
+            item = json.load(f).get("item")
+        for i, (a, b) in enumerate(zip(a_rows, b_rows)):
             if not same(a, b):
+                if item == 8 and any(row[8] != a_rows[0][8] for row in a_rows[:i + 1]):
+                    known += 1  # Flash mine placement after a rotation, see README
+                    break
                 print(f"{path}: frame {a[0]}\n  PR2 {' '.join(a)}\n  PR4 {' '.join(b)}")
                 bad += 1
                 break
-    print(f"{pool}: {count - bad}/{count} scenarios match")
+    print(f"{pool}: {count - bad - known}/{count} scenarios match, {known} differ only by "
+          f"Flash's mine placement, {bad} differ")
     return bad
 
 
