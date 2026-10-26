@@ -78,7 +78,7 @@ func _ready():
 	add_slider(game_config_button)
 	
 	# Add blocks
-	for i in range(1, 43):
+	for i in range(1, 46):
 		var block_button = BLOCK_BUTTON.instantiate()
 		add_slider(block_button)
 		block_button.set_block_id(i)

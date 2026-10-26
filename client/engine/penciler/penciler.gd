@@ -45,39 +45,24 @@ func _on_level_event(event: Dictionary) -> void:
 		var layer = layers.get_node(event.layer_name)
 		if layer.visible:
 			var lines: Node2D = layers.get_node(event.layer_name + "/Lines")
-			var line = Line2D.new()
-			lines.add_child(line)
-			line.end_cap_mode = Line2D.LINE_CAP_ROUND
-			line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-			line.position = Vector2(event.position.x, event.position.y)
-		
-			var converted_points = []
-		
-			# if the first point is not 0,0, add 0,0 as the first point
-			if len(event.points) == 0 || event.points[0].x != 0 || event.points[0].y != 0:
-				converted_points.append(Vector2.ZERO)
-		
-			# convert point objects into Vector2
+			# Points are relative to the line's position; the first is (0, 0).
+			var points := PackedVector2Array()
+			if len(event.points) == 0 or event.points[0].x != 0 or event.points[0].y != 0:
+				points.push_back(Vector2.ZERO)
 			for point_dict in event.points:
-				converted_points.append(Vector2(point_dict.x, point_dict.y))
-		
-			# if there is only one point, add another one. Need at least two points to draw a line
-			if len(converted_points) == 1:
-				converted_points.append(converted_points[0] + Vector2(0.1, 0.1))
-		
-			#
-			line.points = converted_points
-		
-			# Set line color and width if provided in the event
+				points.push_back(Vector2(point_dict.x, point_dict.y))
+			var color := Color.BLACK
 			if event.has("color"):
-				if event.color is Color:
-					line.default_color = event.color
-				else:
-					line.default_color = Color(event.color)
+				color = event.color if event.color is Color else Color(event.color)
+			var width := 3.0
 			if event.has("width"):
-				line.width = event.width
+				width = event.width
 			if event.has("thickness"):
-				line.width = event.thickness
+				width = event.thickness
+			# Lines are drawn in batches; a PR2-style eraser stroke ("erase")
+			# cuts its shape out of the art drawn before it on this layer.
+			LineBatch.add_line(lines, Vector2(event.position.x, event.position.y), points,
+					color, width, event.get("mode", "draw") == "erase")
 
 	if event.type == EditorEvents.ADD_LAYER:
 		var layer := layers.add_layer(event.name)
@@ -100,6 +85,8 @@ func _on_level_event(event: Dictionary) -> void:
 			var usertextbox = usertextbox_scene.instantiate()
 			usertextboxes.add_child(usertextbox)
 			usertextbox.set_usertext_properties(event.usertext, event.font, event.font_size)
+			if event.has("color"):
+				usertextbox.set_usertext_color(Color(event.color))
 			usertextbox.position = Vector2(event.position.x, event.position.y)
 			usertextbox.scale = Vector2(event.width, event.height)
 			usertextbox.rotation = event.text_rotation

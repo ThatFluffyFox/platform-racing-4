@@ -82,8 +82,7 @@ func interact_with_solid_tiles(character: Character, lightning: LightbreakContro
 		return false
 
 	var normal = collision.get_normal().rotated(-character.rotation)
-	var rid = collision.get_collider_rid()
-	var coords = tile_map_layer.get_coords_for_body_rid(rid)
+	var coords: Vector2i = CoordinateUtils.collision_coords(tile_map_layer, collision)
 	var atlas_coords = tile_map_layer.get_cell_atlas_coords(coords)
 	var tile_type = CoordinateUtils.to_block_id(atlas_coords)
 	var bumped_tile = {"tile_map_layer": tile_map_layer, "coords": coords, "atlas_coords": atlas_coords, "block_id": tile_type}

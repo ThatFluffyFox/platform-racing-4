@@ -28,7 +28,9 @@ func finish():
 	var alt_id: int = tile_map_layer.get_cell_alternative_tile(_coords)
 	await get_tree().physics_frame
 	if _atlas_coords == atlas_coords:
-		if alt_id == Tile.INVISIBLE_DEACTIVATED_ALT_ID:
+		# Keep a block that was used up during the bump (e.g. an item block)
+		# used up; only its visibility comes back.
+		if alt_id == Tile.INVISIBLE_DEACTIVATED_ALT_ID or alt_id == Tile.DEACTIVATED_ALT_ID:
 			tile_map_layer.set_cell(_coords, 0, _atlas_coords, Tile.DEACTIVATED_ALT_ID)
 		else:
 			tile_map_layer.set_cell(_coords, 0, _atlas_coords, Tile.VISIBLE_ALT_ID)

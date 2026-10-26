@@ -14,6 +14,8 @@ func encode(layers: Node2D, bg: Node2D) -> Dictionary:
 			"game_config_overrides": GameConfig.export_overrides()
 		}
 	}
+	if GameConfig.level_gravity != 1.0:
+		level.properties.gravity = GameConfig.level_gravity # kept from PR2 imports
 	for group_layer in layers.get_children():
 		if group_layer is Layer:
 			var tile_layer = {
@@ -22,7 +24,8 @@ func encode(layers: Node2D, bg: Node2D) -> Dictionary:
 				"lines": encode_lines(group_layer.get_node("Lines")),
 				"usertextboxobjects": encode_usertext(group_layer.get_node("UserTextboxes")),
 				"rotation": group_layer.get_node("TileMapLayer").rotation_degrees,
-				"depth": group_layer.depth
+				"depth": group_layer.depth,
+				"scale": group_layer.art_scale
 			}
 			level.layers.push_back(tile_layer)
 	return level
@@ -63,7 +66,13 @@ func encode_chunks(tile_map_layer: TileMapLayer) -> Array:
 func encode_lines(node: Node2D) -> Array:
 	var lines = []
 	
-	for line: Line2D in node.get_children():
+	for child in node.get_children():
+		if child is LineBatch:
+			lines.append_array(child.encode())
+			continue
+		if not child is Line2D:
+			continue
+		var line: Line2D = child
 		var pointObjects = []
 		for point in line.points:
 			pointObjects.push_back({"x": point.x, "y": point.y})
@@ -71,9 +80,11 @@ func encode_lines(node: Node2D) -> Array:
 			"x": line.position.x,
 			"y": line.position.y,
 			"points": pointObjects.slice(1, len(pointObjects) - 1), # the first point should always be 0,0, we can leave it out
-			"color": line.default_color,
+			"color": line.default_color.to_html(),
 			"thickness": line.width
 		}
+		if line.get_meta("erase", false):
+			lineData.mode = "erase"
 		lines.push_back(lineData)
 	return lines
 
@@ -91,5 +102,7 @@ func encode_usertext(node: Node2D) -> Array:
 			"height": usertextbox.get_node("UserText").scale.y,
 			"text_rotation": usertextbox.rotation
 		}
+		if usertextbox.text_color != Color.BLACK:
+			usertextboxobject.color = usertextbox.text_color.to_html()
 		usertextboxobjects.push_back(usertextboxobject)
 	return usertextboxobjects

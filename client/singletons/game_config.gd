@@ -1,6 +1,10 @@
 extends Node
 
 var default_values: Dictionary = {
+	# Level physics
+	"pr2_physics": false, # use Platform Racing 2 player physics
+	"pr3_physics": false, # use Platform Racing 3 player physics (wins over pr2_physics)
+
 	# Player Movement
 	"player_speed": 490.0,
 	"player_jump_velocity": -155.0,
@@ -64,6 +68,7 @@ var default_values: Dictionary = {
 }
 
 var override_values: Dictionary = {}
+var level_gravity: float = 1.0 # the level's own gravity (PR2 levels set it); PR2/PR3 physics use it
 
 
 func get_value(key: String):

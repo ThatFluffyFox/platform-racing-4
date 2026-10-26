@@ -81,6 +81,16 @@ func _ready():
 	enable_text_edits()
 
 
+var text_color := Color.BLACK
+
+
+## The color text is drawn in (PR2 text objects each have one).
+func set_usertext_color(color: Color) -> void:
+	text_color = color
+	label_text.set("theme_override_colors/default_color", color)
+	user_text.set("theme_override_colors/font_color", color)
+
+
 func set_usertext_properties(text, text_font, text_size):
 	user_text.text = text
 	usertext_font = text_font

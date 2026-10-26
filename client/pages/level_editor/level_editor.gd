@@ -5,6 +5,9 @@ static var editor_cursors: Node
 static var current_level: Dictionary
 static var current_level_description: String
 static var level_editor: Node
+# Where the editor camera was when leaving for Test/Back, restored on return.
+static var camera_position = null
+static var camera_zoom := 0.5
 
 var default_level: Dictionary = {
 	"layers": [{
@@ -31,6 +34,9 @@ var default_level: Dictionary = {
 @onready var editor_camera: Camera2D = $EditorCamera
 @onready var now_editing_panel: Node2D = $UI/NowEditingPanel
 @onready var game_config_panel = $UI/GameConfigPanel
+@onready var import_pr2 = $UI/ImportPR2
+@onready var pr2_import_panel = $UI/Pr2ImportPanel
+@onready var new_level_panel = $UI/NewLevelPanel
 
 @onready var cursor = $UI/Cursor
 @onready var penciler: Node2D = $Penciler
@@ -57,6 +63,9 @@ func _ready():
 	save.connect("pressed", _on_save_pressed)
 	test.connect("pressed", _on_test_pressed)
 	clear.connect("pressed", _on_clear_pressed)
+	import_pr2.connect("pressed", _on_import_pr2_pressed)
+	pr2_import_panel.level_imported.connect(_on_pr2_level_imported)
+	new_level_panel.level_chosen.connect(_on_new_level_chosen)
 	load_panel.connect("level_load", _on_level_load)
 	explore_panel.connect("explore_load", _on_explore_load)
 	game_client.connect("request_editor_load", _on_request_editor_load)
@@ -77,19 +86,25 @@ func _ready():
 	penciler.init(level_manager.layers, bg, editor_events, layer_panel)
 	cursor.init(editor_menu, level_manager.layers)
 	
+	var loaded_level: Dictionary = default_level
 	if LevelEditor.current_level:
-		level_manager.decode_level(LevelEditor.current_level, true)
+		loaded_level = LevelEditor.current_level
 	else:
 		var saved_level = FileManager.load_from_file()
 		if saved_level:
-			level_manager.decode_level(saved_level, true)
-		else:
-			level_manager.decode_level(default_level, true)
+			loaded_level = saved_level
+	level_manager.decode_level(loaded_level, true)
 			
 	layer_panel_node.init(level_manager.layers)
 	
-	editor_camera.target_zoom = 0.5
-	editor_camera.change_camera_zoom(0.5)
+	# Come back to where the camera was (PR2 levels sit far from 0, 0)
+	if LevelEditor.camera_position != null:
+		editor_camera.position = LevelEditor.camera_position
+		editor_camera.reset_smoothing()
+	else:
+		_move_camera_to_start(loaded_level)
+	editor_camera.target_zoom = LevelEditor.camera_zoom
+	editor_camera.change_camera_zoom(LevelEditor.camera_zoom)
 	
 	# Connect control events for camera zoom changes
 	$UI/EditorMenu.control_event.connect(_on_control_event)
@@ -97,7 +112,13 @@ func _ready():
 	Jukebox.end_music = true
 
 
+func _remember_camera():
+	LevelEditor.camera_position = editor_camera.position
+	LevelEditor.camera_zoom = editor_camera.target_zoom
+
+
 func _on_back_pressed():
+	_remember_camera()
 	LevelEditor.current_level = level_manager.encode_level()
 	FileManager.save_to_file(LevelEditor.current_level)
 	await Main.set_scene(Main.TITLE)
@@ -126,16 +147,71 @@ func _on_save_pressed():
 
 
 func _on_test_pressed():
+	_remember_camera()
 	LevelEditor.current_level = level_manager.encode_level()
 	FileManager.save_to_file(LevelEditor.current_level)
 	Main.set_scene(Main.TESTER, { "level": LevelEditor.current_level })
+
+
+func _on_import_pr2_pressed():
+	new_level_panel.close()
+	explore_panel.close()
+	save_panel.close()
+	load_panel.close()
+	confirm_delete_panel.close()
+	pr2_import_panel.initialize()
+
+
+func _on_pr2_level_imported(level: Dictionary):
+	FileManager.set_current_level_name("")
+	level_manager.clear()
+	LevelEditor.current_level = level
+	await get_tree().create_timer(0.1).timeout
+	level_manager.decode_level(level, true)
+	level_manager.layers.init(level_manager.tiles)
+	layer_panel_node.render()
+	_move_camera_to_start(level)
+
+
+## Centers the editor camera on the level's start block (or its first block).
+func _move_camera_to_start(level: Dictionary):
+	var start_tile = _find_tile(level, 12)
+	if start_tile == null:
+		start_tile = _find_tile(level, -1)
+	if start_tile == null:
+		return
+	editor_camera.position = (start_tile + Vector2(0.5, 0.5)) * Vector2(Settings.tile_size)
+	editor_camera.reset_smoothing()
+
+
+## Position of the first tile with this block id (-1 = any block), or null.
+func _find_tile(level: Dictionary, wanted_id: int):
+	for layer in level.get("layers", []):
+		for chunk in layer.get("chunks", []):
+			for i in chunk.data.size():
+				var block_id: int = chunk.data[i]
+				if block_id != 0 and (wanted_id == -1 or block_id == wanted_id):
+					return Vector2(chunk.x + i % int(chunk.width), chunk.y + i / int(chunk.width))
+	return null
 
 
 func _on_clear_pressed():
 	save_panel.close()
 	load_panel.close()
 	explore_panel.close()
-	confirm_delete_panel.initialize(self, "clear")
+	pr2_import_panel.close()
+	new_level_panel.initialize()
+
+
+func _on_new_level_chosen(level: Dictionary):
+	FileManager.set_current_level_name("")
+	level_manager.clear()
+	LevelEditor.current_level = level
+	await get_tree().create_timer(0.1).timeout
+	level_manager.decode_level(level, true)
+	level_manager.layers.init(level_manager.tiles)
+	layer_panel_node.render()
+	_move_camera_to_start(level)
 
 
 func _on_level_load(level_name = ""):
@@ -150,6 +226,7 @@ func _on_level_load(level_name = ""):
 	await get_tree().create_timer(0.1).timeout
 	level_manager.decode_level(selected_level, true)
 	level_manager.layers.init(level_manager.tiles)
+	_move_camera_to_start(selected_level)
 
 
 func _on_request_editor_load():

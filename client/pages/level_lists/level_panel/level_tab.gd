@@ -38,7 +38,7 @@ func close() -> void:
 
 
 func perform_paginated_request() -> void:
-	var url = ApiManager.get_base_url() + "/files/lists/" + level_tab_name + "/" + str(current_page)
+	var url = Pr2LevelImporter.list_url(level_tab_name, current_page)
 	var error = $HTTPRequest.request(url)
 	if error != OK:
 		push_error("An error occurred in the HTTP request.")

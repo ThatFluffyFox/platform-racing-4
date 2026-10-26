@@ -54,6 +54,9 @@ func init_defaults() -> void:
 	map['40'] = Appear.new()
 	map['41'] = Mega.new()
 	map['42'] = Mini.new()
+	map['43'] = PhysicsSwitch.new("pr2")
+	map['44'] = PhysicsSwitch.new("pr3")
+	map['45'] = PhysicsSwitch.new("pr4")
 	
 	# init
 	for tile_id in map:

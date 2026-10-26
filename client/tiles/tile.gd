@@ -53,7 +53,10 @@ func get_center_position(tile_map_layer: TileMapLayer, coords: Vector2i) -> Vect
 
 func deactivate(tile_map_layer: TileMapLayer, coords: Vector2i) -> void:
 	var atlas_coords: Vector2i = tile_map_layer.get_cell_atlas_coords(coords)
-	tile_map_layer.set_cell(coords, 0, atlas_coords, Tile.DEACTIVATED_ALT_ID)
+	# A block hidden by its bump animation stays hidden until the animation ends.
+	var hidden := tile_map_layer.get_cell_alternative_tile(coords) == Tile.INVISIBLE_ALT_ID
+	var alt := Tile.INVISIBLE_DEACTIVATED_ALT_ID if hidden else Tile.DEACTIVATED_ALT_ID
+	tile_map_layer.set_cell(coords, 0, atlas_coords, alt)
 
 
 func set_visible(tile_map_layer: TileMapLayer, coords: Vector2i, visible: bool) -> void:

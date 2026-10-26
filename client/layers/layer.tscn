@@ -12,7 +12,7 @@ script = ExtResource("1_wroxk")
 
 [node name="Stamps" type="Node2D" parent="."]
 
-[node name="Lines" type="Node2D" parent="."]
+[node name="Lines" type="CanvasGroup" parent="."]
 
 [node name="UserTextboxes" type="Node2D" parent="."]
 

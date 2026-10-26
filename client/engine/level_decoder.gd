@@ -11,6 +11,9 @@ func decode(level: Dictionary, isEditing: bool, layers: Layers) -> void:
 	var properties = level.get("properties", {})
 	if properties.has("game_config_overrides"):
 		GameConfig.import_overrides(properties.game_config_overrides)
+	# The level's gravity (PR2 imports carry one); used by PR2/PR3 physics
+	var gravity = properties.get("gravity", 1.0)
+	GameConfig.level_gravity = float(gravity) if gravity is float or gravity is int else 1.0
 
 	print("LevelDecoder::decode: ", properties)
 	# Emit background change event
@@ -69,7 +72,12 @@ func decode_lines(layer_name: String, objects: Array) -> void:
 			
 		# Emit add line event
 		var line_color
-		if typeof(object.color) == TYPE_STRING:
+		if typeof(object.color) == TYPE_STRING and object.color.begins_with("("):
+			# Older saves wrote a Color as "(r, g, b, a)"
+			var parts: PackedStringArray = object.color.trim_prefix("(").trim_suffix(")").split(",")
+			line_color = Color(parts[0].to_float(), parts[1].to_float(), parts[2].to_float(),
+					parts[3].to_float() if parts.size() > 3 else 1.0).to_html()
+		elif typeof(object.color) == TYPE_STRING:
 			line_color = object.color
 		else:
 			line_color = Color(object.color[0], object.color[1], object.color[2], object.color[3]).to_html()
@@ -80,7 +88,8 @@ func decode_lines(layer_name: String, objects: Array) -> void:
 			"position": {"x": object.x, "y": object.y},
 			"points": points_array,
 			"color": line_color,
-			"thickness": object.thickness
+			"thickness": object.thickness,
+			"mode": object.get("mode", "draw"),
 		})
 
 
@@ -102,8 +111,7 @@ func decode_usertextboxes(layer_name: String, usertextboxobjects: Array, isEditi
 		if "text_rotation" not in usertextboxobject.keys():
 			usertextboxobject.text_rotation = 0
 		
-		# Emit add usertext event
-		emit_signal("level_event", {
+		var text_event := {
 			"type": EditorEvents.ADD_USERTEXT,
 			"layer_name": layer_name,
 			"position": {"x": usertextboxobject.x, "y": usertextboxobject.y},
@@ -114,4 +122,8 @@ func decode_usertextboxes(layer_name: String, usertextboxobjects: Array, isEditi
 			"height": usertextboxobject.height,
 			"text_rotation": usertextboxobject.text_rotation,
 			"is_editing": isEditing
-		})
+		}
+		if usertextboxobject.has("color"):
+			text_event.color = usertextboxobject.color
+		# Emit add usertext event
+		emit_signal("level_event", text_event)

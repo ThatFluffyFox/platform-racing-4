@@ -25,6 +25,11 @@ func erase_lines():
 	var camera: Camera2D = get_viewport().get_camera_2d()
 	var mouse_position = line_holder.get_local_mouse_position() + camera.get_screen_center_position() - (camera.get_screen_center_position() * (1/layer.follow_viewport_scale))
 	for line in line_holder.get_children():
+		if line is LineBatch:
+			line.erase_near(mouse_position, radius)
+			continue
+		if not line is Line2D:
+			continue
 		var points = line.points
 		for i in range(points.size() - 1):
 			var p1: Vector2 = points[i] + line.position

@@ -43,3 +43,44 @@ func add_to_vanish_dict(coords: Vector2i, vanish_effect: VanishEffect) -> void:
 
 func remove_from_vanish_dict(coords: Vector2i) -> void:
 	vanish_effects.erase(coords)
+
+
+## Draws a vanish block at a fade level (0 = gone, 1 = solid) for PR2/PR3
+## physics, which run their own vanish timing. The tile is hidden while a
+## sprite of it shows the fade.
+static func show_fade(tile_map_layer: TileMapLayer, coords: Vector2i, alpha: float) -> void:
+	if tile_map_layer.get_cell_source_id(coords) == -1:
+		return
+	var sprite_name := str(coords.x) + "-" + str(coords.y) + "-classic-fade"
+	var sprite: Sprite2D = tile_map_layer.get_node_or_null(sprite_name)
+	var atlas_coords := tile_map_layer.get_cell_atlas_coords(coords)
+	var alt := tile_map_layer.get_cell_alternative_tile(coords)
+	var deactivated := alt == Tile.DEACTIVATED_ALT_ID or alt == Tile.INVISIBLE_DEACTIVATED_ALT_ID
+	if alpha >= 1 or alpha <= 0:
+		if sprite:
+			tile_map_layer.remove_child(sprite)
+			sprite.queue_free()
+		var shown := alpha >= 1
+		var new_alt: int
+		if deactivated:
+			new_alt = Tile.DEACTIVATED_ALT_ID if shown else Tile.INVISIBLE_DEACTIVATED_ALT_ID
+		else:
+			new_alt = Tile.VISIBLE_ALT_ID if shown else Tile.INVISIBLE_ALT_ID
+		if new_alt != alt:
+			tile_map_layer.set_cell(coords, 0, atlas_coords, new_alt)
+		return
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = sprite_name
+		sprite.centered = false
+		sprite.texture = tile_map_layer.tile_set.get_source(0).texture
+		sprite.region_enabled = true
+		sprite.region_rect = Rect2(atlas_coords * Settings.tile_size, Settings.tile_size)
+		sprite.position = coords * Settings.tile_size
+		if deactivated:
+			sprite.self_modulate = Color(0.5, 0.5, 0.5)
+		tile_map_layer.add_child(sprite)
+	sprite.modulate.a = alpha
+	var hidden_alt := Tile.INVISIBLE_DEACTIVATED_ALT_ID if deactivated else Tile.INVISIBLE_ALT_ID
+	if alt != hidden_alt:
+		tile_map_layer.set_cell(coords, 0, atlas_coords, hidden_alt)
